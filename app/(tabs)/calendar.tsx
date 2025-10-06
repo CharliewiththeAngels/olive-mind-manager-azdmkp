@@ -33,6 +33,8 @@ interface EventData {
 }
 
 export default function CalendarScreen() {
+  console.log('CalendarScreen rendering...');
+  
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
   const [showEventModal, setShowEventModal] = useState(false);
@@ -49,14 +51,19 @@ export default function CalendarScreen() {
   });
 
   useEffect(() => {
+    console.log('CalendarScreen useEffect running...');
     loadEvents();
   }, []);
 
   const loadEvents = async () => {
     try {
+      console.log('Loading events from AsyncStorage...');
       const storedEvents = await AsyncStorage.getItem('olive_mind_events');
       if (storedEvents) {
         setEvents(JSON.parse(storedEvents));
+        console.log('Events loaded:', JSON.parse(storedEvents));
+      } else {
+        console.log('No events found in storage');
       }
     } catch (error) {
       console.log('Error loading events:', error);
@@ -67,12 +74,14 @@ export default function CalendarScreen() {
     try {
       await AsyncStorage.setItem('olive_mind_events', JSON.stringify(newEvents));
       setEvents(newEvents);
+      console.log('Events saved successfully');
     } catch (error) {
       console.log('Error saving events:', error);
     }
   };
 
   const onDayPress = (day: DateData) => {
+    console.log('Day pressed:', day.dateString);
     setSelectedDate(day.dateString);
     setShowEventModal(true);
   };
@@ -169,6 +178,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
         sent: false,
       });
       await AsyncStorage.setItem('olive_mind_messages', JSON.stringify(messages));
+      console.log('Message generated and saved');
     } catch (error) {
       console.log('Error saving message:', error);
     }
@@ -198,6 +208,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
         paid: false,
       });
       await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(payments));
+      console.log('Payment entry created');
     } catch (error) {
       console.log('Error saving payment:', error);
     }
@@ -225,6 +236,8 @@ Ensure that your work station at all times is clean and presentable. There is a 
     });
     return marked;
   };
+
+  console.log('CalendarScreen about to render UI...');
 
   return (
     <SafeAreaView style={styles.container}>

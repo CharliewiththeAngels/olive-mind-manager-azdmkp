@@ -7,6 +7,8 @@ import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { colors } from '@/styles/commonStyles';
 
 export default function TabLayout() {
+  console.log('TabLayout rendering...');
+  
   // Define the tabs configuration for Olive Mind Marketing work management
   const tabs: TabBarItem[] = [
     {
@@ -39,6 +41,10 @@ export default function TabLayout() {
   if (Platform.OS === 'ios') {
     return (
       <NativeTabs>
+        <NativeTabs.Trigger name="index">
+          <Icon sf="calendar" drawable="ic_calendar" />
+          <Label>Calendar</Label>
+        </NativeTabs.Trigger>
         <NativeTabs.Trigger name="calendar">
           <Icon sf="calendar" drawable="ic_calendar" />
           <Label>Calendar</Label>
@@ -68,6 +74,7 @@ export default function TabLayout() {
           animation: 'none', // Remove fade animation to prevent black screen flash
         }}
       >
+        <Stack.Screen name="index" />
         <Stack.Screen name="calendar" />
         <Stack.Screen name="schedule" />
         <Stack.Screen name="messages" />

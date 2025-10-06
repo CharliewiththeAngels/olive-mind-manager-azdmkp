@@ -29,34 +29,39 @@ interface EventData {
 }
 
 export default function ScheduleScreen() {
+  console.log('ScheduleScreen rendering...');
+  
   const [events, setEvents] = useState<EventData[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('ScheduleScreen useEffect running...');
     loadSchedule();
   }, []);
 
   const loadSchedule = async () => {
     try {
+      console.log('Loading schedule from AsyncStorage...');
       const storedEvents = await AsyncStorage.getItem('olive_mind_events');
       if (storedEvents) {
         const eventsData = JSON.parse(storedEvents);
-        // Flatten the events object into an array and sort by date
         const allEvents: EventData[] = [];
-        Object.keys(eventsData).forEach(date => {
-          eventsData[date].forEach((event: EventData) => {
-            allEvents.push(event);
-          });
+        
+        // Flatten all events from all dates
+        Object.values(eventsData).forEach((dayEvents: any) => {
+          if (Array.isArray(dayEvents)) {
+            allEvents.push(...dayEvents);
+          }
         });
         
         // Sort events by date
         allEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         setEvents(allEvents);
+        console.log('Schedule loaded:', allEvents.length, 'events');
+      } else {
+        console.log('No schedule found in storage');
       }
     } catch (error) {
       console.log('Error loading schedule:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -64,7 +69,6 @@ export default function ScheduleScreen() {
     const date = new Date(dateString);
     const options: Intl.DateTimeFormatOptions = { 
       weekday: 'short', 
-      year: 'numeric', 
       month: 'short', 
       day: 'numeric' 
     };
@@ -92,15 +96,7 @@ export default function ScheduleScreen() {
   const upcomingEvents = events.filter(event => isUpcoming(event.date));
   const pastEvents = events.filter(event => !isUpcoming(event.date));
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading schedule...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  console.log('ScheduleScreen about to render UI...');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -122,49 +118,20 @@ export default function ScheduleScreen() {
 
         {upcomingEvents.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="clock" size={20} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Upcoming Events</Text>
-            </View>
-            
+            <Text style={styles.sectionTitle}>Upcoming Events</Text>
             {upcomingEvents.map((event) => (
               <View key={event.id} style={[styles.eventCard, styles.upcomingCard]}>
                 <View style={styles.eventHeader}>
                   <Text style={styles.eventTitle}>{event.event}</Text>
                   <Text style={styles.eventDate}>{formatDate(event.date)}</Text>
                 </View>
-                
-                <View style={styles.eventDetails}>
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="location" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailText}>{event.venue}</Text>
-                  </View>
-                  
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="person.2" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailText}>{event.promoters}</Text>
-                  </View>
-                  
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="clock" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailText}>{event.arrivalTime} - {event.duration}</Text>
-                  </View>
-                  
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="dollarsign" size={16} color={colors.textSecondary} />
-                    <Text style={styles.detailText}>{event.rate}</Text>
-                  </View>
-                  
-                  {event.brands && (
-                    <View style={styles.detailRow}>
-                      <IconSymbol name="tag" size={16} color={colors.textSecondary} />
-                      <Text style={styles.detailText}>{event.brands}</Text>
-                    </View>
-                  )}
-                </View>
-                
-                {event.location && (
-                  <Text style={styles.locationText}>{event.location}</Text>
+                <Text style={styles.eventVenue}>{event.venue}</Text>
+                <Text style={styles.eventDetail}>Promoters: {event.promoters}</Text>
+                <Text style={styles.eventDetail}>Arrival: {event.arrivalTime}</Text>
+                <Text style={styles.eventDetail}>Duration: {event.duration}</Text>
+                <Text style={styles.eventDetail}>Rate: {event.rate}</Text>
+                {event.brands && (
+                  <Text style={styles.eventDetail}>Brands: {event.brands}</Text>
                 )}
               </View>
             ))}
@@ -173,40 +140,32 @@ export default function ScheduleScreen() {
 
         {pastEvents.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="checkmark.circle" size={20} color={colors.textSecondary} />
-              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Past Events</Text>
-            </View>
-            
+            <Text style={styles.sectionTitle}>Past Events</Text>
             {pastEvents.map((event) => (
               <View key={event.id} style={[styles.eventCard, styles.pastCard]}>
                 <View style={styles.eventHeader}>
-                  <Text style={[styles.eventTitle, { color: colors.textSecondary }]}>{event.event}</Text>
-                  <Text style={[styles.eventDate, { color: colors.textSecondary }]}>{formatDate(event.date)}</Text>
+                  <Text style={[styles.eventTitle, styles.pastEventTitle]}>{event.event}</Text>
+                  <Text style={[styles.eventDate, styles.pastEventDate]}>{formatDate(event.date)}</Text>
                 </View>
-                
-                <View style={styles.eventDetails}>
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="location" size={16} color={colors.textSecondary} />
-                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>{event.venue}</Text>
-                  </View>
-                  
-                  <View style={styles.detailRow}>
-                    <IconSymbol name="person.2" size={16} color={colors.textSecondary} />
-                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>{event.promoters}</Text>
-                  </View>
-                </View>
+                <Text style={[styles.eventVenue, styles.pastEventText]}>{event.venue}</Text>
+                <Text style={[styles.eventDetail, styles.pastEventText]}>Promoters: {event.promoters}</Text>
+                <Text style={[styles.eventDetail, styles.pastEventText]}>Arrival: {event.arrivalTime}</Text>
+                <Text style={[styles.eventDetail, styles.pastEventText]}>Duration: {event.duration}</Text>
+                <Text style={[styles.eventDetail, styles.pastEventText]}>Rate: {event.rate}</Text>
+                {event.brands && (
+                  <Text style={[styles.eventDetail, styles.pastEventText]}>Brands: {event.brands}</Text>
+                )}
               </View>
             ))}
           </View>
         )}
 
         {events.length === 0 && (
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyState}>
             <IconSymbol name="calendar" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>No Events Scheduled</Text>
             <Text style={styles.emptySubtitle}>
-              Create your first event in the Calendar tab to see it here
+              Create events in the Calendar tab to see them here
             </Text>
           </View>
         )}
@@ -222,15 +181,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
   },
   header: {
     padding: 20,
@@ -250,21 +200,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
-    marginLeft: 8,
+    marginBottom: 12,
   },
   eventCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
     padding: 16,
+    borderRadius: 12,
     marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
@@ -273,66 +217,65 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   upcomingCard: {
+    backgroundColor: colors.card,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
   },
   pastCard: {
+    backgroundColor: colors.card,
+    opacity: 0.7,
     borderLeftWidth: 4,
     borderLeftColor: colors.textSecondary,
-    opacity: 0.7,
   },
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   eventTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.text,
+    color: colors.primary,
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
+  },
+  pastEventTitle: {
+    color: colors.textSecondary,
   },
   eventDate: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.primary,
-    backgroundColor: colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    color: colors.accent,
   },
-  eventDetails: {
+  pastEventDate: {
+    color: colors.textSecondary,
+  },
+  eventVenue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
     marginBottom: 8,
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  detailText: {
+  eventDetail: {
     fontSize: 14,
     color: colors.text,
-    marginLeft: 8,
-    flex: 1,
+    marginBottom: 4,
   },
-  locationText: {
-    fontSize: 12,
+  pastEventText: {
     color: colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 8,
   },
-  emptyContainer: {
+  emptyState: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 64,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: colors.textSecondary,
+    color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -340,6 +283,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 40,
+    lineHeight: 24,
   },
 });

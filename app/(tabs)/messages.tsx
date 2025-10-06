@@ -10,12 +10,12 @@ import {
   Alert,
   Share,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 
 interface MessageData {
   id: string;
@@ -26,15 +26,18 @@ interface MessageData {
 }
 
 export default function MessagesScreen() {
+  console.log('MessagesScreen rendering...');
+  
   const [messages, setMessages] = useState<MessageData[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('MessagesScreen useEffect running...');
     loadMessages();
   }, []);
 
   const loadMessages = async () => {
     try {
+      console.log('Loading messages from AsyncStorage...');
       const storedMessages = await AsyncStorage.getItem('olive_mind_messages');
       if (storedMessages) {
         const messagesData = JSON.parse(storedMessages);
@@ -43,11 +46,12 @@ export default function MessagesScreen() {
           new Date(b.date).getTime() - new Date(a.date).getTime()
         );
         setMessages(messagesData);
+        console.log('Messages loaded:', messagesData.length, 'messages');
+      } else {
+        console.log('No messages found in storage');
       }
     } catch (error) {
       console.log('Error loading messages:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -58,8 +62,9 @@ export default function MessagesScreen() {
       );
       setMessages(updatedMessages);
       await AsyncStorage.setItem('olive_mind_messages', JSON.stringify(updatedMessages));
+      console.log('Message marked as sent');
     } catch (error) {
-      console.log('Error updating message:', error);
+      console.log('Error marking message as sent:', error);
     }
   };
 
@@ -78,7 +83,7 @@ export default function MessagesScreen() {
   const copyMessage = async (message: MessageData) => {
     try {
       await Clipboard.setStringAsync(message.message);
-      Alert.alert('Copied', 'Message copied to clipboard');
+      Alert.alert('Copied!', 'Message copied to clipboard');
       await markAsSent(message.id);
     } catch (error) {
       console.log('Error copying message:', error);
@@ -88,8 +93,7 @@ export default function MessagesScreen() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'short', 
-      year: 'numeric', 
+      weekday: 'short',
       month: 'short', 
       day: 'numeric',
       hour: '2-digit',
@@ -112,6 +116,7 @@ export default function MessagesScreen() {
               const updatedMessages = messages.filter(msg => msg.id !== messageId);
               setMessages(updatedMessages);
               await AsyncStorage.setItem('olive_mind_messages', JSON.stringify(updatedMessages));
+              console.log('Message deleted');
             } catch (error) {
               console.log('Error deleting message:', error);
             }
@@ -121,15 +126,7 @@ export default function MessagesScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading messages...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  console.log('MessagesScreen about to render UI...');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -146,61 +143,66 @@ export default function MessagesScreen() {
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.title}>Work Messages</Text>
-          <Text style={styles.subtitle}>Generated messages for your events</Text>
+          <Text style={styles.subtitle}>Generated confirmation messages</Text>
         </View>
 
         {messages.length > 0 ? (
           messages.map((message) => (
             <View key={message.id} style={styles.messageCard}>
               <View style={styles.messageHeader}>
-                <View style={styles.statusContainer}>
+                <View style={styles.messageInfo}>
+                  <Text style={styles.messageDate}>{formatDate(message.date)}</Text>
                   <View style={[
-                    styles.statusDot, 
-                    { backgroundColor: message.sent ? colors.accent : colors.secondary }
-                  ]} />
-                  <Text style={styles.statusText}>
-                    {message.sent ? 'Sent' : 'Draft'}
-                  </Text>
+                    styles.statusBadge,
+                    message.sent ? styles.sentBadge : styles.pendingBadge
+                  ]}>
+                    <Text style={[
+                      styles.statusText,
+                      message.sent ? styles.sentText : styles.pendingText
+                    ]}>
+                      {message.sent ? 'Sent' : 'Pending'}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.messageDate}>{formatDate(message.date)}</Text>
+                <TouchableOpacity
+                  onPress={() => deleteMessage(message.id)}
+                  style={styles.deleteButton}
+                >
+                  <IconSymbol name="trash" size={20} color={colors.secondary} />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.messageContent}>
-                <Text style={styles.messageText}>{message.message}</Text>
+                <Text style={styles.messageText} numberOfLines={6}>
+                  {message.message}
+                </Text>
               </View>
 
               <View style={styles.messageActions}>
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.shareButton]}
-                  onPress={() => shareMessage(message)}
-                >
-                  <IconSymbol name="square.and.arrow.up" size={16} color={colors.card} />
-                  <Text style={styles.shareButtonText}>Share</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.copyButton]}
                   onPress={() => copyMessage(message)}
+                  style={[styles.actionButton, styles.copyButton]}
                 >
-                  <IconSymbol name="doc.on.doc" size={16} color={colors.primary} />
-                  <Text style={styles.copyButtonText}>Copy</Text>
+                  <IconSymbol name="doc.on.clipboard" size={18} color={colors.card} />
+                  <Text style={styles.actionButtonText}>Copy</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() => deleteMessage(message.id)}
+                  onPress={() => shareMessage(message)}
+                  style={[styles.actionButton, styles.shareButton]}
                 >
-                  <IconSymbol name="trash" size={16} color={colors.secondary} />
+                  <IconSymbol name="square.and.arrow.up" size={18} color={colors.card} />
+                  <Text style={styles.actionButtonText}>Share</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ))
         ) : (
-          <View style={styles.emptyContainer}>
+          <View style={styles.emptyState}>
             <IconSymbol name="envelope" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>No Messages Yet</Text>
             <Text style={styles.emptySubtitle}>
-              Create events in the Calendar tab to generate messages automatically
+              Create events in the Calendar tab to generate confirmation messages
             </Text>
           </View>
         )}
@@ -216,15 +218,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
   },
   header: {
     padding: 20,
@@ -242,8 +235,9 @@ const styles = StyleSheet.create({
   },
   messageCard: {
     backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginBottom: 16,
     borderRadius: 12,
-    margin: 16,
     padding: 16,
     elevation: 2,
     shadowColor: '#000',
@@ -254,94 +248,88 @@ const styles = StyleSheet.create({
   messageHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
-  statusContainer: {
+  messageInfo: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+    gap: 12,
   },
   messageDate: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  sentBadge: {
+    backgroundColor: colors.accent,
+  },
+  pendingBadge: {
+    backgroundColor: colors.highlight,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sentText: {
+    color: colors.card,
+  },
+  pendingText: {
+    color: colors.text,
+  },
+  deleteButton: {
+    padding: 4,
   },
   messageContent: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   messageText: {
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   messageActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 12,
   },
   actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 8,
+  },
+  copyButton: {
+    backgroundColor: colors.primary,
   },
   shareButton: {
-    backgroundColor: colors.primary,
-    flex: 1,
-    marginRight: 8,
-    justifyContent: 'center',
+    backgroundColor: colors.accent,
   },
-  shareButtonText: {
+  actionButtonText: {
     color: colors.card,
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 4,
   },
-  copyButton: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.primary,
+  emptyState: {
     flex: 1,
-    marginRight: 8,
-    justifyContent: 'center',
-  },
-  copyButtonText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  deleteButton: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.secondary,
-    paddingHorizontal: 12,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 64,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: colors.textSecondary,
+    color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
@@ -349,6 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 40,
+    lineHeight: 24,
   },
 });
