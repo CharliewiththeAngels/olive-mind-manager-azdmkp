@@ -18,6 +18,12 @@ export default function TabLayout() {
       label: 'Calendar',
     },
     {
+      name: 'workers',
+      route: '/(tabs)/workers',
+      icon: 'person.2',
+      label: 'Workers',
+    },
+    {
       name: 'schedule',
       route: '/(tabs)/schedule',
       icon: 'clock',
@@ -49,6 +55,10 @@ export default function TabLayout() {
           <Icon sf="calendar" drawable="ic_calendar" />
           <Label>Calendar</Label>
         </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="workers">
+          <Icon sf="person.2" drawable="ic_people" />
+          <Label>Workers</Label>
+        </NativeTabs.Trigger>
         <NativeTabs.Trigger name="schedule">
           <Icon sf="clock" drawable="ic_schedule" />
           <Label>Schedule</Label>
@@ -76,6 +86,7 @@ export default function TabLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="calendar" />
+        <Stack.Screen name="workers" />
         <Stack.Screen name="schedule" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="payments" />

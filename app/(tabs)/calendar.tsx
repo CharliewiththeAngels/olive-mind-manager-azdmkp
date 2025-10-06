@@ -22,6 +22,7 @@ interface EventData {
   id: string;
   date: string;
   promoters: string;
+  selectedWorkerIds: string[];
   venue: string;
   location: string;
   event: string;
@@ -32,14 +33,30 @@ interface EventData {
   mechanic: string;
 }
 
+interface WorkerData {
+  id: string;
+  name: string;
+  contactNumber: string;
+  area: string;
+  age: string;
+  height: string;
+  rating: number;
+  photos: string[];
+  owingAmount: number;
+  createdAt: string;
+}
+
 export default function CalendarScreen() {
   console.log('CalendarScreen rendering...');
   
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
+  const [workers, setWorkers] = useState<WorkerData[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showWorkerDropdown, setShowWorkerDropdown] = useState(false);
   const [eventForm, setEventForm] = useState<Partial<EventData>>({
     promoters: '',
+    selectedWorkerIds: [],
     venue: '',
     location: '',
     event: '',
@@ -53,6 +70,7 @@ export default function CalendarScreen() {
   useEffect(() => {
     console.log('CalendarScreen useEffect running...');
     loadEvents();
+    loadWorkers();
   }, []);
 
   const loadEvents = async () => {
@@ -67,6 +85,21 @@ export default function CalendarScreen() {
       }
     } catch (error) {
       console.log('Error loading events:', error);
+    }
+  };
+
+  const loadWorkers = async () => {
+    try {
+      console.log('Loading workers from AsyncStorage...');
+      const storedWorkers = await AsyncStorage.getItem('olive_mind_workers');
+      if (storedWorkers) {
+        setWorkers(JSON.parse(storedWorkers));
+        console.log('Workers loaded:', JSON.parse(storedWorkers));
+      } else {
+        console.log('No workers found in storage');
+      }
+    } catch (error) {
+      console.log('Error loading workers:', error);
     }
   };
 
@@ -86,6 +119,30 @@ export default function CalendarScreen() {
     setShowEventModal(true);
   };
 
+  const toggleWorkerSelection = (workerId: string) => {
+    const currentSelection = eventForm.selectedWorkerIds || [];
+    const isSelected = currentSelection.includes(workerId);
+    
+    let newSelection;
+    if (isSelected) {
+      newSelection = currentSelection.filter(id => id !== workerId);
+    } else {
+      newSelection = [...currentSelection, workerId];
+    }
+    
+    // Update promoters field with selected worker names
+    const selectedWorkerNames = workers
+      .filter(worker => newSelection.includes(worker.id))
+      .map(worker => worker.name)
+      .join(' & ');
+    
+    setEventForm({
+      ...eventForm,
+      selectedWorkerIds: newSelection,
+      promoters: selectedWorkerNames,
+    });
+  };
+
   const createEvent = async () => {
     if (!selectedDate || !eventForm.promoters || !eventForm.venue || !eventForm.event) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -96,6 +153,7 @@ export default function CalendarScreen() {
       id: Date.now().toString(),
       date: selectedDate,
       promoters: eventForm.promoters || '',
+      selectedWorkerIds: eventForm.selectedWorkerIds || [],
       venue: eventForm.venue || '',
       location: eventForm.location || '',
       event: eventForm.event || '',
@@ -117,12 +175,13 @@ export default function CalendarScreen() {
     // Generate message for the Messages tab
     await generateMessage(newEvent);
     
-    // Create payment entry
-    await createPaymentEntry(newEvent);
+    // Create payment entries for each selected worker
+    await createPaymentEntries(newEvent);
 
     setShowEventModal(false);
     setEventForm({
       promoters: '',
+      selectedWorkerIds: [],
       venue: '',
       location: '',
       event: '',
@@ -184,7 +243,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
     }
   };
 
-  const createPaymentEntry = async (event: EventData) => {
+  const createPaymentEntries = async (event: EventData) => {
     try {
       const existingPayments = await AsyncStorage.getItem('olive_mind_payments');
       const payments = existingPayments ? JSON.parse(existingPayments) : [];
@@ -196,21 +255,30 @@ Ensure that your work station at all times is clean and presentable. There is a 
       const hourlyRate = rateMatch ? parseInt(rateMatch[1]) : 100;
       const totalAmount = hours * hourlyRate;
 
-      payments.push({
-        id: Date.now().toString(),
-        eventId: event.id,
-        promoters: event.promoters,
-        event: event.event,
-        date: event.date,
-        hours,
-        rate: hourlyRate,
-        totalAmount,
-        paid: false,
+      // Create individual payment entries for each selected worker
+      event.selectedWorkerIds.forEach(workerId => {
+        const worker = workers.find(w => w.id === workerId);
+        if (worker) {
+          payments.push({
+            id: `${Date.now()}-${workerId}`,
+            eventId: event.id,
+            workerId: workerId,
+            workerName: worker.name,
+            promoters: worker.name,
+            event: event.event,
+            date: event.date,
+            hours,
+            rate: hourlyRate,
+            totalAmount,
+            paid: false,
+          });
+        }
       });
+
       await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(payments));
-      console.log('Payment entry created');
+      console.log('Payment entries created for selected workers');
     } catch (error) {
-      console.log('Error saving payment:', error);
+      console.log('Error saving payments:', error);
     }
   };
 
@@ -321,14 +389,51 @@ Ensure that your work station at all times is clean and presentable. There is a 
             </Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Promoters *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.promoters}
-                onChangeText={(text) => setEventForm({...eventForm, promoters: text})}
-                placeholder="e.g., Jackie & Noluthando"
-                placeholderTextColor={colors.textSecondary}
-              />
+              <Text style={styles.inputLabel}>Select Workers *</Text>
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={() => setShowWorkerDropdown(!showWorkerDropdown)}
+              >
+                <Text style={styles.dropdownButtonText}>
+                  {eventForm.promoters || 'Select workers for this event'}
+                </Text>
+                <IconSymbol 
+                  name={showWorkerDropdown ? 'chevron.up' : 'chevron.down'} 
+                  size={16} 
+                  color={colors.textSecondary} 
+                />
+              </TouchableOpacity>
+              
+              {showWorkerDropdown && (
+                <View style={styles.dropdown}>
+                  {workers.length === 0 ? (
+                    <Text style={styles.noWorkersText}>
+                      No workers available. Add workers in the Workers tab first.
+                    </Text>
+                  ) : (
+                    workers.map((worker) => (
+                      <TouchableOpacity
+                        key={worker.id}
+                        style={[
+                          styles.workerOption,
+                          (eventForm.selectedWorkerIds || []).includes(worker.id) && styles.selectedWorkerOption
+                        ]}
+                        onPress={() => toggleWorkerSelection(worker.id)}
+                      >
+                        <View style={styles.workerOptionInfo}>
+                          <Text style={styles.workerOptionName}>{worker.name}</Text>
+                          <Text style={styles.workerOptionDetails}>
+                            {worker.area} • Rating: {worker.rating}/5
+                          </Text>
+                        </View>
+                        {(eventForm.selectedWorkerIds || []).includes(worker.id) && (
+                          <IconSymbol name="checkmark" size={20} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -557,5 +662,58 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.textSecondary,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: colors.card,
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: colors.text,
+    flex: 1,
+  },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: colors.textSecondary,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    marginTop: 4,
+    maxHeight: 200,
+  },
+  workerOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
+  },
+  selectedWorkerOption: {
+    backgroundColor: colors.primary + '10',
+  },
+  workerOptionInfo: {
+    flex: 1,
+  },
+  workerOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  workerOptionDetails: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  noWorkersText: {
+    padding: 16,
+    textAlign: 'center',
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
 });

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -18,6 +19,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface PaymentData {
   id: string;
   eventId: string;
+  workerId?: string;
+  workerName?: string;
   promoters: string;
   event: string;
   date: string;
@@ -27,14 +30,30 @@ interface PaymentData {
   paid: boolean;
 }
 
+interface WorkerData {
+  id: string;
+  name: string;
+  contactNumber: string;
+  area: string;
+  age: string;
+  height: string;
+  rating: number;
+  photos: string[];
+  owingAmount: number;
+  createdAt: string;
+}
+
 export default function PaymentsScreen() {
   console.log('PaymentsScreen rendering...');
   
   const [payments, setPayments] = useState<PaymentData[]>([]);
+  const [workers, setWorkers] = useState<WorkerData[]>([]);
+  const [selectedTab, setSelectedTab] = useState<'pending' | 'completed' | 'workers'>('pending');
 
   useEffect(() => {
     console.log('PaymentsScreen useEffect running...');
     loadPayments();
+    loadWorkers();
   }, []);
 
   const loadPayments = async () => {
@@ -42,13 +61,8 @@ export default function PaymentsScreen() {
       console.log('Loading payments from AsyncStorage...');
       const storedPayments = await AsyncStorage.getItem('olive_mind_payments');
       if (storedPayments) {
-        const paymentsData = JSON.parse(storedPayments);
-        // Sort payments by date (newest first)
-        paymentsData.sort((a: PaymentData, b: PaymentData) => 
-          new Date(b.date).getTime() - new Date(a.date).getTime()
-        );
-        setPayments(paymentsData);
-        console.log('Payments loaded:', paymentsData.length, 'payments');
+        setPayments(JSON.parse(storedPayments));
+        console.log('Payments loaded:', JSON.parse(storedPayments));
       } else {
         console.log('No payments found in storage');
       }
@@ -57,40 +71,66 @@ export default function PaymentsScreen() {
     }
   };
 
+  const loadWorkers = async () => {
+    try {
+      console.log('Loading workers from AsyncStorage...');
+      const storedWorkers = await AsyncStorage.getItem('olive_mind_workers');
+      if (storedWorkers) {
+        setWorkers(JSON.parse(storedWorkers));
+        console.log('Workers loaded:', JSON.parse(storedWorkers));
+      } else {
+        console.log('No workers found in storage');
+      }
+    } catch (error) {
+      console.log('Error loading workers:', error);
+    }
+  };
+
   const markAsPaid = async (paymentId: string) => {
-    Alert.alert(
-      'Mark as Paid',
-      'Are you sure you want to mark this payment as completed?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Mark Paid',
-          onPress: async () => {
-            try {
-              const updatedPayments = payments.map(payment => 
-                payment.id === paymentId ? { ...payment, paid: true } : payment
-              );
-              setPayments(updatedPayments);
-              await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(updatedPayments));
-              console.log('Payment marked as paid');
-            } catch (error) {
-              console.log('Error marking payment as paid:', error);
-            }
-          }
-        }
-      ]
-    );
+    try {
+      const updatedPayments = payments.map(payment => 
+        payment.id === paymentId ? { ...payment, paid: true } : payment
+      );
+      
+      await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(updatedPayments));
+      setPayments(updatedPayments);
+      
+      // Update worker's owing amount
+      const payment = payments.find(p => p.id === paymentId);
+      if (payment && payment.workerId) {
+        await updateWorkerOwingAmount(payment.workerId, -payment.totalAmount);
+      }
+      
+      console.log('Payment marked as paid');
+      Alert.alert('Success', 'Payment marked as completed!');
+    } catch (error) {
+      console.log('Error marking payment as paid:', error);
+    }
+  };
+
+  const updateWorkerOwingAmount = async (workerId: string, amountChange: number) => {
+    try {
+      const updatedWorkers = workers.map(worker => 
+        worker.id === workerId 
+          ? { ...worker, owingAmount: Math.max(0, worker.owingAmount + amountChange) }
+          : worker
+      );
+      
+      await AsyncStorage.setItem('olive_mind_workers', JSON.stringify(updatedWorkers));
+      setWorkers(updatedWorkers);
+      console.log('Worker owing amount updated');
+    } catch (error) {
+      console.log('Error updating worker owing amount:', error);
+    }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'short',
-      month: 'short', 
+    return date.toLocaleDateString('en-ZA', {
       day: 'numeric',
-      year: 'numeric'
-    };
-    return date.toLocaleDateString('en-ZA', options);
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
   const formatCurrency = (amount: number) => {
@@ -98,25 +138,111 @@ export default function PaymentsScreen() {
   };
 
   const calculateTotals = () => {
-    const pending = payments.filter(p => !p.paid);
-    const completed = payments.filter(p => p.paid);
+    const pendingPayments = payments.filter(p => !p.paid);
+    const completedPayments = payments.filter(p => p.paid);
     
-    const pendingAmount = pending.reduce((sum, p) => sum + p.totalAmount, 0);
-    const completedAmount = completed.reduce((sum, p) => sum + p.totalAmount, 0);
-    const totalAmount = pendingAmount + completedAmount;
-
-    return {
-      pending: pendingAmount,
-      completed: completedAmount,
-      total: totalAmount,
-      pendingCount: pending.length,
-      completedCount: completed.length,
-    };
+    const totalPending = pendingPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
+    const totalCompleted = completedPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
+    const totalOwing = workers.reduce((sum, worker) => sum + worker.owingAmount, 0);
+    
+    return { totalPending, totalCompleted, totalOwing };
   };
 
-  const totals = calculateTotals();
+  const getWorkerPaymentSummary = () => {
+    const workerSummary: { [key: string]: { name: string; totalEarned: number; totalPaid: number; totalOwing: number; paymentCount: number } } = {};
+    
+    payments.forEach(payment => {
+      const workerId = payment.workerId || payment.promoters;
+      const workerName = payment.workerName || payment.promoters;
+      
+      if (!workerSummary[workerId]) {
+        workerSummary[workerId] = {
+          name: workerName,
+          totalEarned: 0,
+          totalPaid: 0,
+          totalOwing: 0,
+          paymentCount: 0,
+        };
+      }
+      
+      workerSummary[workerId].totalEarned += payment.totalAmount;
+      workerSummary[workerId].paymentCount += 1;
+      
+      if (payment.paid) {
+        workerSummary[workerId].totalPaid += payment.totalAmount;
+      } else {
+        workerSummary[workerId].totalOwing += payment.totalAmount;
+      }
+    });
+    
+    return Object.values(workerSummary);
+  };
+
+  const renderPaymentCard = ({ item }: { item: PaymentData }) => (
+    <View style={styles.paymentCard}>
+      <View style={styles.paymentHeader}>
+        <View style={styles.paymentInfo}>
+          <Text style={styles.paymentTitle}>{item.event}</Text>
+          <Text style={styles.paymentWorker}>👤 {item.workerName || item.promoters}</Text>
+          <Text style={styles.paymentDate}>📅 {formatDate(item.date)}</Text>
+        </View>
+        <View style={styles.paymentAmount}>
+          <Text style={styles.amountText}>{formatCurrency(item.totalAmount)}</Text>
+          <Text style={styles.hoursText}>{item.hours}h × R{item.rate}</Text>
+        </View>
+      </View>
+      
+      {!item.paid && (
+        <TouchableOpacity
+          style={styles.payButton}
+          onPress={() => markAsPaid(item.id)}
+        >
+          <IconSymbol name="checkmark.circle" size={20} color={colors.card} />
+          <Text style={styles.payButtonText}>Mark as Paid</Text>
+        </TouchableOpacity>
+      )}
+      
+      {item.paid && (
+        <View style={styles.paidIndicator}>
+          <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
+          <Text style={styles.paidText}>Paid</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderWorkerSummaryCard = ({ item }: { item: any }) => (
+    <View style={styles.workerSummaryCard}>
+      <View style={styles.workerSummaryHeader}>
+        <Text style={styles.workerSummaryName}>{item.name}</Text>
+        <Text style={styles.workerSummaryCount}>{item.paymentCount} jobs</Text>
+      </View>
+      
+      <View style={styles.workerSummaryStats}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Total Earned</Text>
+          <Text style={styles.statValue}>{formatCurrency(item.totalEarned)}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Paid</Text>
+          <Text style={[styles.statValue, { color: colors.primary }]}>
+            {formatCurrency(item.totalPaid)}
+          </Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Owing</Text>
+          <Text style={[styles.statValue, { color: item.totalOwing > 0 ? colors.secondary : colors.primary }]}>
+            {formatCurrency(item.totalOwing)}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const { totalPending, totalCompleted, totalOwing } = calculateTotals();
   const pendingPayments = payments.filter(p => !p.paid);
   const completedPayments = payments.filter(p => p.paid);
+  const workerSummaries = getWorkerPaymentSummary();
 
   console.log('PaymentsScreen about to render UI...');
 
@@ -132,105 +258,109 @@ export default function PaymentsScreen() {
         />
       )}
       
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Payment Tracking</Text>
-          <Text style={styles.subtitle}>Track your work payments</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Payment Tracking</Text>
+        <Text style={styles.subtitle}>Monitor worker payments and earnings</Text>
+      </View>
+
+      <View style={styles.summaryContainer}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Pending</Text>
+          <Text style={[styles.summaryAmount, { color: colors.secondary }]}>
+            {formatCurrency(totalPending)}
+          </Text>
         </View>
-
-        {/* Summary Cards */}
-        <View style={styles.summaryContainer}>
-          <View style={[styles.summaryCard, styles.pendingCard]}>
-            <Text style={styles.summaryLabel}>Pending</Text>
-            <Text style={styles.summaryAmount}>{formatCurrency(totals.pending)}</Text>
-            <Text style={styles.summaryCount}>{totals.pendingCount} payments</Text>
-          </View>
-
-          <View style={[styles.summaryCard, styles.completedCard]}>
-            <Text style={styles.summaryLabel}>Completed</Text>
-            <Text style={styles.summaryAmount}>{formatCurrency(totals.completed)}</Text>
-            <Text style={styles.summaryCount}>{totals.completedCount} payments</Text>
-          </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Completed</Text>
+          <Text style={[styles.summaryAmount, { color: colors.primary }]}>
+            {formatCurrency(totalCompleted)}
+          </Text>
         </View>
-
-        <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total Earnings</Text>
-          <Text style={styles.totalAmount}>{formatCurrency(totals.total)}</Text>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Total Owing</Text>
+          <Text style={[styles.summaryAmount, { color: colors.accent }]}>
+            {formatCurrency(totalOwing)}
+          </Text>
         </View>
+      </View>
 
-        {/* Pending Payments */}
-        {pendingPayments.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pending Payments</Text>
-            {pendingPayments.map((payment) => (
-              <View key={payment.id} style={[styles.paymentCard, styles.pendingPaymentCard]}>
-                <View style={styles.paymentHeader}>
-                  <View style={styles.paymentInfo}>
-                    <Text style={styles.paymentEvent}>{payment.event}</Text>
-                    <Text style={styles.paymentDate}>{formatDate(payment.date)}</Text>
-                  </View>
-                  <Text style={styles.paymentAmount}>{formatCurrency(payment.totalAmount)}</Text>
-                </View>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, selectedTab === 'pending' && styles.activeTab]}
+          onPress={() => setSelectedTab('pending')}
+        >
+          <Text style={[styles.tabText, selectedTab === 'pending' && styles.activeTabText]}>
+            Pending ({pendingPayments.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, selectedTab === 'completed' && styles.activeTab]}
+          onPress={() => setSelectedTab('completed')}
+        >
+          <Text style={[styles.tabText, selectedTab === 'completed' && styles.activeTabText]}>
+            Completed ({completedPayments.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, selectedTab === 'workers' && styles.activeTab]}
+          onPress={() => setSelectedTab('workers')}
+        >
+          <Text style={[styles.tabText, selectedTab === 'workers' && styles.activeTabText]}>
+            Workers ({workerSummaries.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-                <Text style={styles.paymentDetail}>Promoters: {payment.promoters}</Text>
-                <Text style={styles.paymentDetail}>
-                  {payment.hours} hours × {formatCurrency(payment.rate)}/hour
-                </Text>
+      {selectedTab === 'pending' && (
+        <FlatList
+          data={pendingPayments}
+          renderItem={renderPaymentCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.paymentsList}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol name="checkmark.circle" size={64} color={colors.textSecondary} />
+              <Text style={styles.emptyStateText}>No pending payments</Text>
+              <Text style={styles.emptyStateSubtext}>All payments are up to date!</Text>
+            </View>
+          }
+        />
+      )}
 
-                <TouchableOpacity
-                  onPress={() => markAsPaid(payment.id)}
-                  style={styles.markPaidButton}
-                >
-                  <IconSymbol name="checkmark.circle" size={18} color={colors.card} />
-                  <Text style={styles.markPaidText}>Mark as Paid</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
+      {selectedTab === 'completed' && (
+        <FlatList
+          data={completedPayments}
+          renderItem={renderPaymentCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.paymentsList}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol name="creditcard" size={64} color={colors.textSecondary} />
+              <Text style={styles.emptyStateText}>No completed payments</Text>
+              <Text style={styles.emptyStateSubtext}>Completed payments will appear here</Text>
+            </View>
+          }
+        />
+      )}
 
-        {/* Completed Payments */}
-        {completedPayments.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Completed Payments</Text>
-            {completedPayments.map((payment) => (
-              <View key={payment.id} style={[styles.paymentCard, styles.completedPaymentCard]}>
-                <View style={styles.paymentHeader}>
-                  <View style={styles.paymentInfo}>
-                    <Text style={[styles.paymentEvent, styles.completedText]}>{payment.event}</Text>
-                    <Text style={[styles.paymentDate, styles.completedText]}>{formatDate(payment.date)}</Text>
-                  </View>
-                  <Text style={[styles.paymentAmount, styles.completedText]}>
-                    {formatCurrency(payment.totalAmount)}
-                  </Text>
-                </View>
-
-                <Text style={[styles.paymentDetail, styles.completedText]}>
-                  Promoters: {payment.promoters}
-                </Text>
-                <Text style={[styles.paymentDetail, styles.completedText]}>
-                  {payment.hours} hours × {formatCurrency(payment.rate)}/hour
-                </Text>
-
-                <View style={styles.paidBadge}>
-                  <IconSymbol name="checkmark.circle.fill" size={16} color={colors.accent} />
-                  <Text style={styles.paidText}>Paid</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {payments.length === 0 && (
-          <View style={styles.emptyState}>
-            <IconSymbol name="creditcard" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No Payments Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Create events in the Calendar tab to track payments
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+      {selectedTab === 'workers' && (
+        <FlatList
+          data={workerSummaries}
+          renderItem={renderWorkerSummaryCard}
+          keyExtractor={(item) => item.name}
+          contentContainerStyle={styles.paymentsList}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol name="person.2" size={64} color={colors.textSecondary} />
+              <Text style={styles.emptyStateText}>No worker data</Text>
+              <Text style={styles.emptyStateSubtext}>Worker payment summaries will appear here</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -240,12 +370,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
     padding: 20,
     alignItems: 'center',
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   title: {
     fontSize: 28,
@@ -259,12 +389,12 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 16,
+    padding: 16,
     gap: 12,
   },
   summaryCard: {
     flex: 1,
+    backgroundColor: colors.card,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -273,98 +403,73 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-  },
-  pendingCard: {
-    backgroundColor: colors.highlight,
-  },
-  completedCard: {
-    backgroundColor: colors.accent,
   },
   summaryLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   summaryAmount: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 2,
   },
-  summaryCount: {
-    fontSize: 12,
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  activeTab: {
+    backgroundColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
-  totalCard: {
-    backgroundColor: colors.primary,
-    marginHorizontal: 16,
-    marginBottom: 24,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.card,
-    marginBottom: 8,
-  },
-  totalAmount: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  activeTabText: {
     color: colors.card,
   },
-  section: {
-    marginHorizontal: 16,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
+  paymentsList: {
+    padding: 16,
   },
   paymentCard: {
-    padding: 16,
+    backgroundColor: colors.card,
     borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
-  },
-  pendingPaymentCard: {
-    backgroundColor: colors.card,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.highlight,
-  },
-  completedPaymentCard: {
-    backgroundColor: colors.card,
-    opacity: 0.8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.accent,
   },
   paymentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   paymentInfo: {
     flex: 1,
-    marginRight: 8,
   },
-  paymentEvent: {
+  paymentTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 4,
+  },
+  paymentWorker: {
+    fontSize: 14,
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   paymentDate: {
@@ -372,68 +477,103 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   paymentAmount: {
+    alignItems: 'flex-end',
+  },
+  amountText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.primary,
   },
-  paymentDetail: {
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  completedText: {
+  hoursText: {
+    fontSize: 12,
     color: colors.textSecondary,
+    marginTop: 2,
   },
-  markPaidButton: {
+  payButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: colors.primary,
     paddingVertical: 10,
-    paddingHorizontal: 16,
     borderRadius: 8,
-    marginTop: 12,
-    gap: 8,
   },
-  markPaidText: {
+  payButtonText: {
     color: colors.card,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
-  paidBadge: {
+  paidIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginTop: 12,
-    gap: 6,
+    justifyContent: 'center',
+    paddingVertical: 10,
   },
   paidText: {
-    color: colors.accent,
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  workerSummaryCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  workerSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  workerSummaryName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  workerSummaryCount: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  workerSummaryStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
   },
   emptyState: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 64,
+    alignItems: 'center',
+    padding: 40,
   },
-  emptyTitle: {
-    fontSize: 24,
+  emptyStateText: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtitle: {
+  emptyStateSubtext: {
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
   },
 });
