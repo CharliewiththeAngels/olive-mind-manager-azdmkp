@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
+    borderBottomColor: hexToRgba('#808080', LIGHT_ALPHA),
   },
   title: {
     fontSize: 28,
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 122, 255, 0.125)',
+    backgroundColor: hexToRgba('#007AFF', LIGHT_ALPHA),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 59, 48, 0.125)',
+    backgroundColor: hexToRgba('#FF3B30', LIGHT_ALPHA),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
+    borderBottomColor: hexToRgba('#808080', LIGHT_ALPHA),
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.25)',
+    borderColor: hexToRgba('#808080', BORDER_ALPHA),
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
