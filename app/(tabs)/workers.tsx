@@ -44,6 +44,12 @@ const hexToRgba = (hex: string, alpha: number) => {
 const LIGHT_ALPHA = 0.125;
 const BORDER_ALPHA = 0.25;
 
+// Define color constants to avoid parsing issues
+const BORDER_COLOR_LIGHT = 'rgba(128, 128, 128, 0.125)';
+const BORDER_COLOR_MEDIUM = 'rgba(128, 128, 128, 0.25)';
+const PRIMARY_BACKGROUND_LIGHT = 'rgba(0, 122, 255, 0.125)';
+const SECONDARY_BACKGROUND_LIGHT = 'rgba(255, 59, 48, 0.125)';
+
 export default function WorkersScreen() {
   console.log('WorkersScreen rendering...');
   
@@ -444,7 +450,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
+    borderBottomColor: BORDER_COLOR_LIGHT,
   },
   title: {
     fontSize: 28,
@@ -551,7 +557,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 122, 255, 0.125)',
+    backgroundColor: PRIMARY_BACKGROUND_LIGHT,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -568,7 +574,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 59, 48, 0.125)',
+    backgroundColor: SECONDARY_BACKGROUND_LIGHT,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -592,7 +598,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
+    borderBottomColor: BORDER_COLOR_LIGHT,
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -630,7 +636,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: 'rgba(128, 128, 128, 0.25)',
+    borderColor: BORDER_COLOR_MEDIUM,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
