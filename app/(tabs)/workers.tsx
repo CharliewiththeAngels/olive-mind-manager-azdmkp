@@ -33,15 +33,15 @@ interface WorkerData {
   createdAt: string;
 }
 
-// '#RRGGBB' + 'AA' => '#RRGGBBAA'
+// Helper function to combine hex color with alpha hex
 const withOpacity = (hex: string, alphaHex: string) =>
   `${hex}${alphaHex}`.toLowerCase();
 
-// Or if you prefer decimal alpha (0..1)
+// Helper function to convert hex to rgba with decimal alpha
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#','').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!m) return hex; // fallback if not a 6-digit hex
-  const [, r, g, b] = m;
+  const match = hex.replace('#','').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return hex; // fallback if not a 6-digit hex
+  const [, r, g, b] = match;
   return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
 };
 
