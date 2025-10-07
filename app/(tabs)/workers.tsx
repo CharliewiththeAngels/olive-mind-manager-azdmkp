@@ -34,13 +34,13 @@ interface WorkerData {
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!m) return hex; // fallback if not a 6-digit hex
-  const [, r, g, b] = m;
+  const cleanHex = hex.replace('#', '');
+  const match = cleanHex.match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return hex;
+  const [, r, g, b] = match;
   return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 };
 
-// Define alpha constants to avoid parsing issues
 const LIGHT_ALPHA = 0.125;
 const BORDER_ALPHA = 0.25;
 
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: hexToRgba('#808080', LIGHT_ALPHA),
+    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
   },
   title: {
     fontSize: 28,
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: hexToRgba('#007AFF', LIGHT_ALPHA),
+    backgroundColor: 'rgba(0, 122, 255, 0.125)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: hexToRgba('#FF3B30', LIGHT_ALPHA),
+    backgroundColor: 'rgba(255, 59, 48, 0.125)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: hexToRgba('#808080', LIGHT_ALPHA),
+    borderBottomColor: 'rgba(128, 128, 128, 0.125)',
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: hexToRgba('#808080', BORDER_ALPHA),
+    borderColor: 'rgba(128, 128, 128, 0.25)',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
