@@ -34,15 +34,10 @@ interface WorkerData {
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-
-  if (isNaN(r) || isNaN(g) || isNaN(b)) {
-    return hex; // Return original hex if parsing fails
-  }
-
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return hex; // fallback if not a 6-digit hex
+  const [, r, g, b] = m;
+  return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 };
 
 export default function WorkersScreen() {
