@@ -41,10 +41,9 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 };
 
+// Define color constants to avoid parsing issues
 const LIGHT_ALPHA = 0.125;
 const BORDER_ALPHA = 0.25;
-
-// Define color constants to avoid parsing issues
 const BORDER_COLOR_LIGHT = 'rgba(128, 128, 128, 0.125)';
 const BORDER_COLOR_MEDIUM = 'rgba(128, 128, 128, 0.25)';
 const PRIMARY_BACKGROUND_LIGHT = 'rgba(0, 122, 255, 0.125)';
