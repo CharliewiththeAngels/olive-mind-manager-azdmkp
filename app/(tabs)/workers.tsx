@@ -40,6 +40,10 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 };
 
+// Define alpha constants to avoid parsing issues
+const LIGHT_ALPHA = 0.125;
+const BORDER_ALPHA = 0.25;
+
 export default function WorkersScreen() {
   console.log('WorkersScreen rendering...');
   
@@ -440,7 +444,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
+    borderBottomColor: hexToRgba(colors.textSecondary, LIGHT_ALPHA),
   },
   title: {
     fontSize: 28,
@@ -547,7 +551,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: hexToRgba(colors.primary, 0.125),
+    backgroundColor: hexToRgba(colors.primary, LIGHT_ALPHA),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -564,7 +568,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: hexToRgba(colors.secondary, 0.125),
+    backgroundColor: hexToRgba(colors.secondary, LIGHT_ALPHA),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -588,7 +592,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
+    borderBottomColor: hexToRgba(colors.textSecondary, LIGHT_ALPHA),
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -626,7 +630,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: hexToRgba(colors.textSecondary, 0.25),
+    borderColor: hexToRgba(colors.textSecondary, BORDER_ALPHA),
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
