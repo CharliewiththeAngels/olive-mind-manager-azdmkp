@@ -43,13 +43,8 @@ interface WorkerData {
   createdAt: string;
 }
 
-// '#RRGGBB' + 'AA' => '#RRGGBBAA'
-const withOpacity = (hex: string, alphaHex: string) =>
-  `${hex}${alphaHex}`.toLowerCase();
-
-// Or if you prefer decimal alpha (0..1)
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#','').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if (!m) return hex; // fallback if not a 6-digit hex
   const [, r, g, b] = m;
   return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
@@ -387,7 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: withOpacity(colors.textSecondary, '20'),
+    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
   },
   title: {
     fontSize: 28,

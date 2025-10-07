@@ -46,13 +46,8 @@ interface WorkerData {
   createdAt: string;
 }
 
-// '#RRGGBB' + 'AA' => '#RRGGBBAA'
-const withOpacity = (hex: string, alphaHex: string) =>
-  `${hex}${alphaHex}`.toLowerCase();
-
-// Or if you prefer decimal alpha (0..1)
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#','').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if (!m) return hex; // fallback if not a 6-digit hex
   const [, r, g, b] = m;
   return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
@@ -619,7 +614,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary,
+    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -664,7 +659,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: colors.textSecondary,
+    borderColor: hexToRgba(colors.textSecondary, 0.25),
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
@@ -680,7 +675,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.textSecondary,
+    borderColor: hexToRgba(colors.textSecondary, 0.25),
     borderRadius: 8,
     padding: 12,
     backgroundColor: colors.card,
@@ -692,7 +687,7 @@ const styles = StyleSheet.create({
   },
   dropdown: {
     borderWidth: 1,
-    borderColor: colors.textSecondary,
+    borderColor: hexToRgba(colors.textSecondary, 0.25),
     borderRadius: 8,
     backgroundColor: colors.card,
     marginTop: 4,
@@ -704,10 +699,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: withOpacity(colors.textSecondary, '20'),
+    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
   },
   selectedWorkerOption: {
-    backgroundColor: withOpacity(colors.primary, '10'),
+    backgroundColor: hexToRgba(colors.primary, 0.0625),
   },
   workerOptionInfo: {
     flex: 1,

@@ -33,15 +33,10 @@ interface WorkerData {
   createdAt: string;
 }
 
-// Helper function to combine hex color with alpha hex
-const withOpacity = (hex: string, alphaHex: string) =>
-  `${hex}${alphaHex}`.toLowerCase();
-
-// Helper function to convert hex to rgba with decimal alpha
 const hexToRgba = (hex: string, alpha: number) => {
-  const match = hex.replace('#','').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!match) return hex; // fallback if not a 6-digit hex
-  const [, r, g, b] = match;
+  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return hex; // fallback if not a 6-digit hex
+  const [, r, g, b] = m;
   return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
 };
 
@@ -445,7 +440,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: withOpacity(colors.textSecondary, '20'),
+    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
   },
   title: {
     fontSize: 28,
@@ -552,7 +547,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withOpacity(colors.primary, '20'),
+    backgroundColor: hexToRgba(colors.primary, 0.125),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -569,7 +564,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: withOpacity(colors.secondary, '20'),
+    backgroundColor: hexToRgba(colors.secondary, 0.125),
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -593,7 +588,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: withOpacity(colors.textSecondary, '20'),
+    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -631,7 +626,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: withOpacity(colors.textSecondary, '40'),
+    borderColor: hexToRgba(colors.textSecondary, 0.25),
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
