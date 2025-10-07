@@ -33,22 +33,6 @@ interface WorkerData {
   createdAt: string;
 }
 
-const hexToRgba = (hex: string, alpha: number) => {
-  const cleanHex = hex.replace('#', '');
-  const match = cleanHex.match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!match) return hex;
-  const [, r, g, b] = match;
-  return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
-};
-
-// Define color constants to avoid parsing issues
-const LIGHT_ALPHA = 0.125;
-const BORDER_ALPHA = 0.25;
-const BORDER_COLOR_LIGHT = 'rgba(128, 128, 128, 0.125)';
-const BORDER_COLOR_MEDIUM = 'rgba(128, 128, 128, 0.25)';
-const PRIMARY_BACKGROUND_LIGHT = 'rgba(0, 122, 255, 0.125)';
-const SECONDARY_BACKGROUND_LIGHT = 'rgba(255, 59, 48, 0.125)';
-
 export default function WorkersScreen() {
   console.log('WorkersScreen rendering...');
   
@@ -449,7 +433,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER_COLOR_LIGHT,
+    borderBottomColor: '#E5E7EB', // light gray
   },
   title: {
     fontSize: 28,
@@ -556,7 +540,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: PRIMARY_BACKGROUND_LIGHT,
+    backgroundColor: '#F1F5FF', // soft primary-ish blue
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -573,7 +557,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: SECONDARY_BACKGROUND_LIGHT,
+    backgroundColor: '#FFEDEE', // soft secondary-ish red
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -597,7 +581,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: BORDER_COLOR_LIGHT,
+    borderBottomColor: '#E5E7EB', // light gray
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -635,7 +619,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: BORDER_COLOR_MEDIUM,
+    borderColor: '#D0D5DD', // neutral border gray
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
