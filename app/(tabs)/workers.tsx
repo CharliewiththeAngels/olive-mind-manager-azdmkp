@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
+    borderBottomColor: `${colors.textSecondary}20`,
   },
   title: {
     fontSize: 28,
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary + '20',
+    backgroundColor: `${colors.primary}20`,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.secondary + '20',
+    backgroundColor: `${colors.secondary}20`,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -581,7 +581,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
+    borderBottomColor: `${colors.textSecondary}20`,
     backgroundColor: colors.card,
   },
   modalTitle: {
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderColor: colors.textSecondary + '40',
+    borderColor: `${colors.textSecondary}40`,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
