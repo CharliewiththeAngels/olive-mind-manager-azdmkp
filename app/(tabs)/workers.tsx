@@ -37,7 +37,7 @@ const hexToRgba = (hex: string, alpha: number) => {
   const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if (!m) return hex; // fallback if not a 6-digit hex
   const [, r, g, b] = m;
-  return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
+  return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 };
 
 export default function WorkersScreen() {
