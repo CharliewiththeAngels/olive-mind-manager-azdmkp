@@ -19,8 +19,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface PaymentData {
   id: string;
   eventId: string;
-  workerId?: string;
-  workerName?: string;
   promoters: string;
   event: string;
   date: string;
@@ -28,19 +26,6 @@ interface PaymentData {
   rate: number;
   totalAmount: number;
   paid: boolean;
-}
-
-interface WorkerData {
-  id: string;
-  name: string;
-  contactNumber: string;
-  area: string;
-  age: string;
-  height: string;
-  rating: number;
-  photos: string[];
-  owingAmount: number;
-  createdAt: string;
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
@@ -54,13 +39,11 @@ export default function PaymentsScreen() {
   console.log('PaymentsScreen rendering...');
   
   const [payments, setPayments] = useState<PaymentData[]>([]);
-  const [workers, setWorkers] = useState<WorkerData[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'pending' | 'completed' | 'workers'>('pending');
+  const [selectedTab, setSelectedTab] = useState<'pending' | 'completed' | 'summary'>('pending');
 
   useEffect(() => {
     console.log('PaymentsScreen useEffect running...');
     loadPayments();
-    loadWorkers();
   }, []);
 
   const loadPayments = async () => {
@@ -78,21 +61,6 @@ export default function PaymentsScreen() {
     }
   };
 
-  const loadWorkers = async () => {
-    try {
-      console.log('Loading workers from AsyncStorage...');
-      const storedWorkers = await AsyncStorage.getItem('olive_mind_workers');
-      if (storedWorkers) {
-        setWorkers(JSON.parse(storedWorkers));
-        console.log('Workers loaded:', JSON.parse(storedWorkers));
-      } else {
-        console.log('No workers found in storage');
-      }
-    } catch (error) {
-      console.log('Error loading workers:', error);
-    }
-  };
-
   const markAsPaid = async (paymentId: string) => {
     try {
       const updatedPayments = payments.map(payment => 
@@ -102,32 +70,10 @@ export default function PaymentsScreen() {
       await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(updatedPayments));
       setPayments(updatedPayments);
       
-      // Update worker's owing amount
-      const payment = payments.find(p => p.id === paymentId);
-      if (payment && payment.workerId) {
-        await updateWorkerOwingAmount(payment.workerId, -payment.totalAmount);
-      }
-      
       console.log('Payment marked as paid');
       Alert.alert('Success', 'Payment marked as completed!');
     } catch (error) {
       console.log('Error marking payment as paid:', error);
-    }
-  };
-
-  const updateWorkerOwingAmount = async (workerId: string, amountChange: number) => {
-    try {
-      const updatedWorkers = workers.map(worker => 
-        worker.id === workerId 
-          ? { ...worker, owingAmount: Math.max(0, worker.owingAmount + amountChange) }
-          : worker
-      );
-      
-      await AsyncStorage.setItem('olive_mind_workers', JSON.stringify(updatedWorkers));
-      setWorkers(updatedWorkers);
-      console.log('Worker owing amount updated');
-    } catch (error) {
-      console.log('Error updating worker owing amount:', error);
     }
   };
 
@@ -150,21 +96,19 @@ export default function PaymentsScreen() {
     
     const totalPending = pendingPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
     const totalCompleted = completedPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
-    const totalOwing = workers.reduce((sum, worker) => sum + worker.owingAmount, 0);
     
-    return { totalPending, totalCompleted, totalOwing };
+    return { totalPending, totalCompleted };
   };
 
-  const getWorkerPaymentSummary = () => {
-    const workerSummary: { [key: string]: { name: string; totalEarned: number; totalPaid: number; totalOwing: number; paymentCount: number } } = {};
+  const getPromoterPaymentSummary = () => {
+    const promoterSummary: { [key: string]: { name: string; totalEarned: number; totalPaid: number; totalOwing: number; paymentCount: number } } = {};
     
     payments.forEach(payment => {
-      const workerId = payment.workerId || payment.promoters;
-      const workerName = payment.workerName || payment.promoters;
+      const promoterName = payment.promoters;
       
-      if (!workerSummary[workerId]) {
-        workerSummary[workerId] = {
-          name: workerName,
+      if (!promoterSummary[promoterName]) {
+        promoterSummary[promoterName] = {
+          name: promoterName,
           totalEarned: 0,
           totalPaid: 0,
           totalOwing: 0,
@@ -172,17 +116,17 @@ export default function PaymentsScreen() {
         };
       }
       
-      workerSummary[workerId].totalEarned += payment.totalAmount;
-      workerSummary[workerId].paymentCount += 1;
+      promoterSummary[promoterName].totalEarned += payment.totalAmount;
+      promoterSummary[promoterName].paymentCount += 1;
       
       if (payment.paid) {
-        workerSummary[workerId].totalPaid += payment.totalAmount;
+        promoterSummary[promoterName].totalPaid += payment.totalAmount;
       } else {
-        workerSummary[workerId].totalOwing += payment.totalAmount;
+        promoterSummary[promoterName].totalOwing += payment.totalAmount;
       }
     });
     
-    return Object.values(workerSummary);
+    return Object.values(promoterSummary);
   };
 
   const renderPaymentCard = ({ item }: { item: PaymentData }) => (
@@ -190,7 +134,7 @@ export default function PaymentsScreen() {
       <View style={styles.paymentHeader}>
         <View style={styles.paymentInfo}>
           <Text style={styles.paymentTitle}>{item.event}</Text>
-          <Text style={styles.paymentWorker}>👤 {item.workerName || item.promoters}</Text>
+          <Text style={styles.paymentPromoter}>👤 {item.promoters}</Text>
           <Text style={styles.paymentDate}>📅 {formatDate(item.date)}</Text>
         </View>
         <View style={styles.paymentAmount}>
@@ -218,14 +162,14 @@ export default function PaymentsScreen() {
     </View>
   );
 
-  const renderWorkerSummaryCard = ({ item }: { item: any }) => (
-    <View style={styles.workerSummaryCard}>
-      <View style={styles.workerSummaryHeader}>
-        <Text style={styles.workerSummaryName}>{item.name}</Text>
-        <Text style={styles.workerSummaryCount}>{item.paymentCount} jobs</Text>
+  const renderPromoterSummaryCard = ({ item }: { item: any }) => (
+    <View style={styles.promoterSummaryCard}>
+      <View style={styles.promoterSummaryHeader}>
+        <Text style={styles.promoterSummaryName}>{item.name}</Text>
+        <Text style={styles.promoterSummaryCount}>{item.paymentCount} jobs</Text>
       </View>
       
-      <View style={styles.workerSummaryStats}>
+      <View style={styles.promoterSummaryStats}>
         <View style={styles.statItem}>
           <Text style={styles.statLabel}>Total Earned</Text>
           <Text style={styles.statValue}>{formatCurrency(item.totalEarned)}</Text>
@@ -246,10 +190,10 @@ export default function PaymentsScreen() {
     </View>
   );
 
-  const { totalPending, totalCompleted, totalOwing } = calculateTotals();
+  const { totalPending, totalCompleted } = calculateTotals();
   const pendingPayments = payments.filter(p => !p.paid);
   const completedPayments = payments.filter(p => p.paid);
-  const workerSummaries = getWorkerPaymentSummary();
+  const promoterSummaries = getPromoterPaymentSummary();
 
   console.log('PaymentsScreen about to render UI...');
 
@@ -267,7 +211,7 @@ export default function PaymentsScreen() {
       
       <View style={styles.header}>
         <Text style={styles.title}>Payment Tracking</Text>
-        <Text style={styles.subtitle}>Monitor worker payments and earnings</Text>
+        <Text style={styles.subtitle}>Monitor promoter payments and earnings</Text>
       </View>
 
       <View style={styles.summaryContainer}>
@@ -284,9 +228,9 @@ export default function PaymentsScreen() {
           </Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Owing</Text>
+          <Text style={styles.summaryLabel}>Total</Text>
           <Text style={[styles.summaryAmount, { color: colors.accent }]}>
-            {formatCurrency(totalOwing)}
+            {formatCurrency(totalPending + totalCompleted)}
           </Text>
         </View>
       </View>
@@ -309,11 +253,11 @@ export default function PaymentsScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'workers' && styles.activeTab]}
-          onPress={() => setSelectedTab('workers')}
+          style={[styles.tab, selectedTab === 'summary' && styles.activeTab]}
+          onPress={() => setSelectedTab('summary')}
         >
-          <Text style={[styles.tabText, selectedTab === 'workers' && styles.activeTabText]}>
-            Workers ({workerSummaries.length})
+          <Text style={[styles.tabText, selectedTab === 'summary' && styles.activeTabText]}>
+            Summary ({promoterSummaries.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -352,18 +296,18 @@ export default function PaymentsScreen() {
         />
       )}
 
-      {selectedTab === 'workers' && (
+      {selectedTab === 'summary' && (
         <FlatList
-          data={workerSummaries}
-          renderItem={renderWorkerSummaryCard}
+          data={promoterSummaries}
+          renderItem={renderPromoterSummaryCard}
           keyExtractor={(item) => item.name}
           contentContainerStyle={styles.paymentsList}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <IconSymbol name="person.2" size={64} color={colors.textSecondary} />
-              <Text style={styles.emptyStateText}>No worker data</Text>
-              <Text style={styles.emptyStateSubtext}>Worker payment summaries will appear here</Text>
+              <Text style={styles.emptyStateText}>No payment data</Text>
+              <Text style={styles.emptyStateSubtext}>Promoter payment summaries will appear here</Text>
             </View>
           }
         />
@@ -474,7 +418,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
-  paymentWorker: {
+  paymentPromoter: {
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 2,
@@ -522,7 +466,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-  workerSummaryCard: {
+  promoterSummaryCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
@@ -533,22 +477,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
-  workerSummaryHeader: {
+  promoterSummaryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  workerSummaryName: {
+  promoterSummaryName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
   },
-  workerSummaryCount: {
+  promoterSummaryCount: {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  workerSummaryStats: {
+  promoterSummaryStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
