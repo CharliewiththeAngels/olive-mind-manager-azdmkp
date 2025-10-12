@@ -24,20 +24,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Mock users for demonstration - in a real app, this would come from a backend
 const MOCK_USERS: { [key: string]: { password: string; user: User } } = {
-  'manager@olivemind.com': {
-    password: 'manager123',
+  'mtsand09@gmail.com': {
+    password: 'Olive$22',
     user: {
       id: '1',
-      email: 'manager@olivemind.com',
+      email: 'mtsand09@gmail.com',
       role: 'manager',
       name: 'Manager User',
     },
   },
-  'supervisor@olivemind.com': {
-    password: 'supervisor123',
+  'sisandamhlongo28@gmail.com': {
+    password: 'Sandikens$$',
     user: {
       id: '2',
-      email: 'supervisor@olivemind.com',
+      email: 'sisandamhlongo28@gmail.com',
       role: 'supervisor',
       name: 'Supervisor User',
     },
