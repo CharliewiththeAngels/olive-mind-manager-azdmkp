@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -9,12 +10,14 @@ import {
   Platform,
   Alert,
   FlatList,
+  TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAuth } from '@/contexts/AuthContext';
+import RoleGuard from '@/components/RoleGuard';
 
 interface PaymentData {
   id: string;
@@ -29,60 +32,82 @@ interface PaymentData {
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!m) return hex; // fallback if not a 6-digit hex
-  const [, r, g, b] = m;
-  return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 export default function PaymentsScreen() {
-  console.log('PaymentsScreen rendering...');
-  
+  const { user, isManager } = useAuth();
   const [payments, setPayments] = useState<PaymentData[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'pending' | 'completed' | 'summary'>('pending');
+  const [filteredPayments, setFilteredPayments] = useState<PaymentData[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedView, setSelectedView] = useState<'all' | 'summary'>('all');
 
   useEffect(() => {
-    console.log('PaymentsScreen useEffect running...');
     loadPayments();
   }, []);
 
+  useEffect(() => {
+    filterPayments();
+  }, [payments, searchQuery]);
+
   const loadPayments = async () => {
     try {
-      console.log('Loading payments from AsyncStorage...');
-      const storedPayments = await AsyncStorage.getItem('olive_mind_payments');
+      console.log('Loading payments from storage...');
+      const storedPayments = await AsyncStorage.getItem('@payments');
       if (storedPayments) {
-        setPayments(JSON.parse(storedPayments));
-        console.log('Payments loaded:', JSON.parse(storedPayments));
-      } else {
-        console.log('No payments found in storage');
+        const parsedPayments = JSON.parse(storedPayments);
+        console.log('Loaded payments:', parsedPayments.length);
+        setPayments(parsedPayments);
       }
     } catch (error) {
-      console.log('Error loading payments:', error);
+      console.error('Error loading payments:', error);
     }
   };
 
+  const filterPayments = () => {
+    if (!searchQuery.trim()) {
+      setFilteredPayments(payments);
+      return;
+    }
+
+    const filtered = payments.filter(payment =>
+      payment.promoters.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      payment.event.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredPayments(filtered);
+  };
+
   const markAsPaid = async (paymentId: string) => {
+    if (!isManager()) {
+      Alert.alert('Access Denied', 'Only managers can mark payments as paid.');
+      return;
+    }
+
     try {
-      const updatedPayments = payments.map(payment => 
+      console.log('Marking payment as paid:', paymentId);
+      const updatedPayments = payments.map(payment =>
         payment.id === paymentId ? { ...payment, paid: true } : payment
       );
       
-      await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(updatedPayments));
       setPayments(updatedPayments);
+      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
       
-      console.log('Payment marked as paid');
-      Alert.alert('Success', 'Payment marked as completed!');
+      Alert.alert('Success', 'Payment marked as paid!');
     } catch (error) {
-      console.log('Error marking payment as paid:', error);
+      console.error('Error updating payment:', error);
+      Alert.alert('Error', 'Failed to update payment status');
     }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-ZA', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
     });
   };
 
@@ -91,51 +116,48 @@ export default function PaymentsScreen() {
   };
 
   const calculateTotals = () => {
-    const pendingPayments = payments.filter(p => !p.paid);
-    const completedPayments = payments.filter(p => p.paid);
+    const displayPayments = searchQuery ? filteredPayments : payments;
+    const totalAmount = displayPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
+    const paidAmount = displayPayments.reduce((sum, payment) => 
+      payment.paid ? sum + payment.totalAmount : sum, 0
+    );
+    const unpaidAmount = totalAmount - paidAmount;
     
-    const totalPending = pendingPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
-    const totalCompleted = completedPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
-    
-    return { totalPending, totalCompleted };
+    return { totalAmount, paidAmount, unpaidAmount };
   };
 
   const getPromoterPaymentSummary = () => {
-    const promoterSummary: { [key: string]: { name: string; totalEarned: number; totalPaid: number; totalOwing: number; paymentCount: number } } = {};
+    const displayPayments = searchQuery ? filteredPayments : payments;
+    const promoterSummary: { [key: string]: { total: number; paid: number; unpaid: number; events: number } } = {};
     
-    payments.forEach(payment => {
-      const promoterName = payment.promoters;
-      
-      if (!promoterSummary[promoterName]) {
-        promoterSummary[promoterName] = {
-          name: promoterName,
-          totalEarned: 0,
-          totalPaid: 0,
-          totalOwing: 0,
-          paymentCount: 0,
-        };
+    displayPayments.forEach(payment => {
+      if (!promoterSummary[payment.promoters]) {
+        promoterSummary[payment.promoters] = { total: 0, paid: 0, unpaid: 0, events: 0 };
       }
       
-      promoterSummary[promoterName].totalEarned += payment.totalAmount;
-      promoterSummary[promoterName].paymentCount += 1;
+      promoterSummary[payment.promoters].total += payment.totalAmount;
+      promoterSummary[payment.promoters].events += 1;
       
       if (payment.paid) {
-        promoterSummary[promoterName].totalPaid += payment.totalAmount;
+        promoterSummary[payment.promoters].paid += payment.totalAmount;
       } else {
-        promoterSummary[promoterName].totalOwing += payment.totalAmount;
+        promoterSummary[payment.promoters].unpaid += payment.totalAmount;
       }
     });
     
-    return Object.values(promoterSummary);
+    return Object.entries(promoterSummary).map(([name, data]) => ({
+      name,
+      ...data,
+    }));
   };
 
   const renderPaymentCard = ({ item }: { item: PaymentData }) => (
     <View style={styles.paymentCard}>
       <View style={styles.paymentHeader}>
         <View style={styles.paymentInfo}>
-          <Text style={styles.paymentTitle}>{item.event}</Text>
-          <Text style={styles.paymentPromoter}>👤 {item.promoters}</Text>
-          <Text style={styles.paymentDate}>📅 {formatDate(item.date)}</Text>
+          <Text style={styles.promoterName}>{item.promoters}</Text>
+          <Text style={styles.eventName}>{item.event}</Text>
+          <Text style={styles.eventDate}>{formatDate(item.date)}</Text>
         </View>
         <View style={styles.paymentAmount}>
           <Text style={styles.amountText}>{formatCurrency(item.totalAmount)}</Text>
@@ -143,175 +165,159 @@ export default function PaymentsScreen() {
         </View>
       </View>
       
-      {!item.paid && (
-        <TouchableOpacity
-          style={styles.payButton}
-          onPress={() => markAsPaid(item.id)}
-        >
-          <IconSymbol name="checkmark.circle" size={20} color={colors.card} />
-          <Text style={styles.payButtonText}>Mark as Paid</Text>
-        </TouchableOpacity>
-      )}
-      
-      {item.paid && (
-        <View style={styles.paidIndicator}>
-          <IconSymbol name="checkmark.circle.fill" size={20} color={colors.primary} />
-          <Text style={styles.paidText}>Paid</Text>
+      <View style={styles.paymentFooter}>
+        <View style={[styles.statusBadge, item.paid ? styles.paidBadge : styles.unpaidBadge]}>
+          <IconSymbol 
+            name={item.paid ? "check-circle" : "clock"} 
+            size={16} 
+            color={item.paid ? colors.card : colors.secondary} 
+          />
+          <Text style={[styles.statusText, item.paid ? styles.paidText : styles.unpaidText]}>
+            {item.paid ? 'Paid' : 'Unpaid'}
+          </Text>
         </View>
-      )}
+        
+        <RoleGuard allowedRoles={['manager']} showMessage={false}>
+          {!item.paid && (
+            <TouchableOpacity
+              style={styles.payButton}
+              onPress={() => markAsPaid(item.id)}
+            >
+              <Text style={styles.payButtonText}>Mark as Paid</Text>
+            </TouchableOpacity>
+          )}
+        </RoleGuard>
+      </View>
     </View>
   );
 
   const renderPromoterSummaryCard = ({ item }: { item: any }) => (
-    <View style={styles.promoterSummaryCard}>
-      <View style={styles.promoterSummaryHeader}>
-        <Text style={styles.promoterSummaryName}>{item.name}</Text>
-        <Text style={styles.promoterSummaryCount}>{item.paymentCount} jobs</Text>
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryHeader}>
+        <Text style={styles.summaryName}>{item.name}</Text>
+        <Text style={styles.summaryTotal}>{formatCurrency(item.total)}</Text>
       </View>
       
-      <View style={styles.promoterSummaryStats}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Total Earned</Text>
-          <Text style={styles.statValue}>{formatCurrency(item.totalEarned)}</Text>
+      <View style={styles.summaryDetails}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Events:</Text>
+          <Text style={styles.summaryValue}>{item.events}</Text>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Paid</Text>
-          <Text style={[styles.statValue, { color: colors.primary }]}>
-            {formatCurrency(item.totalPaid)}
-          </Text>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Paid:</Text>
+          <Text style={[styles.summaryValue, styles.paidAmount]}>{formatCurrency(item.paid)}</Text>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Owing</Text>
-          <Text style={[styles.statValue, { color: item.totalOwing > 0 ? colors.secondary : colors.primary }]}>
-            {formatCurrency(item.totalOwing)}
-          </Text>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Unpaid:</Text>
+          <Text style={[styles.summaryValue, styles.unpaidAmount]}>{formatCurrency(item.unpaid)}</Text>
         </View>
       </View>
     </View>
   );
 
-  const { totalPending, totalCompleted } = calculateTotals();
-  const pendingPayments = payments.filter(p => !p.paid);
-  const completedPayments = payments.filter(p => p.paid);
-  const promoterSummaries = getPromoterPaymentSummary();
-
-  console.log('PaymentsScreen about to render UI...');
+  const totals = calculateTotals();
+  const promoterSummary = getPromoterPaymentSummary();
 
   return (
     <SafeAreaView style={styles.container}>
-      {Platform.OS === 'ios' && (
-        <Stack.Screen
-          options={{
-            title: "Payments - Olive Mind Marketing",
-            headerStyle: { backgroundColor: colors.card },
-            headerTintColor: colors.text,
-          }}
-        />
-      )}
+      <Stack.Screen 
+        options={{ 
+          title: 'Payments',
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.card },
+          headerTitleStyle: { color: colors.text },
+        }} 
+      />
       
       <View style={styles.header}>
-        <Text style={styles.title}>Payment Tracking</Text>
-        <Text style={styles.subtitle}>Monitor promoter payments and earnings</Text>
-      </View>
-
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Pending</Text>
-          <Text style={[styles.summaryAmount, { color: colors.secondary }]}>
-            {formatCurrency(totalPending)}
-          </Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Completed</Text>
-          <Text style={[styles.summaryAmount, { color: colors.primary }]}>
-            {formatCurrency(totalCompleted)}
-          </Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total</Text>
-          <Text style={[styles.summaryAmount, { color: colors.accent }]}>
-            {formatCurrency(totalPending + totalCompleted)}
+        <Text style={styles.title}>Payment Management</Text>
+        <View style={styles.roleIndicator}>
+          <IconSymbol 
+            name={isManager() ? "crown" : "eye"} 
+            size={16} 
+            color={isManager() ? colors.primary : colors.accent} 
+          />
+          <Text style={styles.roleText}>
+            {isManager() ? 'Manager - Can Edit' : 'Supervisor - View Only'}
           </Text>
         </View>
       </View>
 
-      <View style={styles.tabContainer}>
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <IconSymbol name="magnifying-glass" size={20} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or event..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.viewToggle}>
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'pending' && styles.activeTab]}
-          onPress={() => setSelectedTab('pending')}
+          style={[styles.toggleButton, selectedView === 'all' && styles.activeToggle]}
+          onPress={() => setSelectedView('all')}
         >
-          <Text style={[styles.tabText, selectedTab === 'pending' && styles.activeTabText]}>
-            Pending ({pendingPayments.length})
+          <Text style={[styles.toggleText, selectedView === 'all' && styles.activeToggleText]}>
+            All Payments
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, selectedTab === 'completed' && styles.activeTab]}
-          onPress={() => setSelectedTab('completed')}
+          style={[styles.toggleButton, selectedView === 'summary' && styles.activeToggle]}
+          onPress={() => setSelectedView('summary')}
         >
-          <Text style={[styles.tabText, selectedTab === 'completed' && styles.activeTabText]}>
-            Completed ({completedPayments.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, selectedTab === 'summary' && styles.activeTab]}
-          onPress={() => setSelectedTab('summary')}
-        >
-          <Text style={[styles.tabText, selectedTab === 'summary' && styles.activeTabText]}>
-            Summary ({promoterSummaries.length})
+          <Text style={[styles.toggleText, selectedView === 'summary' && styles.activeToggleText]}>
+            By Promoter
           </Text>
         </TouchableOpacity>
       </View>
 
-      {selectedTab === 'pending' && (
-        <FlatList
-          data={pendingPayments}
-          renderItem={renderPaymentCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.paymentsList}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <IconSymbol name="checkmark.circle" size={64} color={colors.textSecondary} />
-              <Text style={styles.emptyStateText}>No pending payments</Text>
-              <Text style={styles.emptyStateSubtext}>All payments are up to date!</Text>
-            </View>
-          }
-        />
+      <View style={styles.totalsContainer}>
+        <View style={styles.totalCard}>
+          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalAmount}>{formatCurrency(totals.totalAmount)}</Text>
+        </View>
+        <View style={styles.totalCard}>
+          <Text style={styles.totalLabel}>Paid</Text>
+          <Text style={[styles.totalAmount, styles.paidAmount]}>{formatCurrency(totals.paidAmount)}</Text>
+        </View>
+        <View style={styles.totalCard}>
+          <Text style={styles.totalLabel}>Unpaid</Text>
+          <Text style={[styles.totalAmount, styles.unpaidAmount]}>{formatCurrency(totals.unpaidAmount)}</Text>
+        </View>
+      </View>
+
+      {searchQuery.length > 0 && (
+        <View style={styles.searchResults}>
+          <Text style={styles.searchResultsText}>
+            {filteredPayments.length} result{filteredPayments.length !== 1 ? 's' : ''} for "{searchQuery}"
+          </Text>
+        </View>
       )}
 
-      {selectedTab === 'completed' && (
-        <FlatList
-          data={completedPayments}
-          renderItem={renderPaymentCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.paymentsList}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <IconSymbol name="creditcard" size={64} color={colors.textSecondary} />
-              <Text style={styles.emptyStateText}>No completed payments</Text>
-              <Text style={styles.emptyStateSubtext}>Completed payments will appear here</Text>
-            </View>
-          }
-        />
-      )}
-
-      {selectedTab === 'summary' && (
-        <FlatList
-          data={promoterSummaries}
-          renderItem={renderPromoterSummaryCard}
-          keyExtractor={(item) => item.name}
-          contentContainerStyle={styles.paymentsList}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <IconSymbol name="person.2" size={64} color={colors.textSecondary} />
-              <Text style={styles.emptyStateText}>No payment data</Text>
-              <Text style={styles.emptyStateSubtext}>Promoter payment summaries will appear here</Text>
-            </View>
-          }
-        />
-      )}
+      <FlatList
+        data={selectedView === 'all' ? filteredPayments : promoterSummary}
+        renderItem={selectedView === 'all' ? renderPaymentCard : renderPromoterSummaryCard}
+        keyExtractor={(item, index) => selectedView === 'all' ? (item as PaymentData).id : `summary_${index}`}
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <IconSymbol name="creditcard" size={48} color={colors.textSecondary} />
+            <Text style={styles.emptyTitle}>No Payments Found</Text>
+            <Text style={styles.emptyMessage}>
+              {searchQuery ? 'Try adjusting your search terms' : 'Payments will appear here when events are created'}
+            </Text>
+          </View>
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -323,208 +329,257 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    alignItems: 'center',
     backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
+    borderBottomColor: colors.textSecondary + '20',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 8,
+    textAlign: 'center',
   },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  summaryContainer: {
+  roleIndicator: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    justifyContent: 'center',
+    marginTop: 8,
   },
-  summaryLabel: {
-    fontSize: 14,
+  roleText: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginLeft: 4,
   },
-  summaryAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  searchContainer: {
+    padding: 20,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
-  tabContainer: {
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: 12,
+  },
+  viewToggle: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
-  tab: {
+  toggleButton: {
     flex: 1,
     paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 6,
+    backgroundColor: colors.background,
+    marginHorizontal: 4,
+    borderRadius: 8,
   },
-  activeTab: {
+  activeToggle: {
     backgroundColor: colors.primary,
   },
-  tabText: {
+  toggleText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
   },
-  activeTabText: {
+  activeToggleText: {
     color: colors.card,
   },
-  paymentsList: {
-    padding: 16,
+  totalsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
+  },
+  totalCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  totalAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  paidAmount: {
+    color: colors.primary,
+  },
+  unpaidAmount: {
+    color: colors.secondary,
+  },
+  searchResults: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: colors.highlight + '20',
+  },
+  searchResultsText: {
+    fontSize: 14,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  list: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   paymentCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    marginVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '20',
   },
   paymentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: 12,
   },
   paymentInfo: {
     flex: 1,
   },
-  paymentTitle: {
+  promoterName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
   },
-  paymentPromoter: {
+  eventName: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 2,
+    color: colors.primary,
+    marginTop: 2,
   },
-  paymentDate: {
-    fontSize: 14,
+  eventDate: {
+    fontSize: 12,
     color: colors.textSecondary,
+    marginTop: 2,
   },
   paymentAmount: {
     alignItems: 'flex-end',
   },
   amountText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.primary,
+    fontWeight: '600',
+    color: colors.text,
   },
   hoursText: {
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  payButton: {
+  paymentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  paidBadge: {
     backgroundColor: colors.primary,
-    paddingVertical: 10,
+  },
+  unpaidBadge: {
+    backgroundColor: colors.secondary + '20',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  paidText: {
+    color: colors.card,
+  },
+  unpaidText: {
+    color: colors.secondary,
+  },
+  payButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   payButtonText: {
     color: colors.card,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '600',
   },
-  paidIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  paidText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  promoterSummaryCard: {
+  summaryCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    marginVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '20',
   },
-  promoterSummaryHeader: {
+  summaryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  promoterSummaryName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  summaryName: {
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
   },
-  promoterSummaryCount: {
+  summaryTotal: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  summaryDetails: {
+    gap: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  promoterSummaryStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '500',
     color: colors.text,
   },
-  emptyState: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    paddingVertical: 60,
   },
-  emptyStateText: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
     marginTop: 16,
     marginBottom: 8,
   },
-  emptyStateSubtext: {
-    fontSize: 16,
+  emptyMessage: {
+    fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 20,
   },
 });

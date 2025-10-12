@@ -1,5 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
 import {
   View,
   Text,
@@ -8,11 +12,8 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface EventData {
   id: string;
@@ -29,61 +30,58 @@ interface EventData {
 }
 
 export default function ScheduleScreen() {
-  console.log('ScheduleScreen rendering...');
-  
-  const [events, setEvents] = useState<EventData[]>([]);
+  const { user, isManager } = useAuth();
+  const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
+  const [upcomingEvents, setUpcomingEvents] = useState<EventData[]>([]);
 
   useEffect(() => {
-    console.log('ScheduleScreen useEffect running...');
     loadSchedule();
   }, []);
 
   const loadSchedule = async () => {
     try {
-      console.log('Loading schedule from AsyncStorage...');
-      const storedEvents = await AsyncStorage.getItem('olive_mind_events');
+      console.log('Loading schedule from storage...');
+      const storedEvents = await AsyncStorage.getItem('@events');
       if (storedEvents) {
-        const eventsData = JSON.parse(storedEvents);
-        const allEvents: EventData[] = [];
+        const parsedEvents = JSON.parse(storedEvents);
+        console.log('Loaded events for schedule:', Object.keys(parsedEvents).length, 'dates');
+        setEvents(parsedEvents);
         
-        // Flatten all events from all dates
-        Object.values(eventsData).forEach((dayEvents: any) => {
-          if (Array.isArray(dayEvents)) {
-            allEvents.push(...dayEvents);
-          }
+        // Filter and sort upcoming events
+        const allEvents: EventData[] = [];
+        Object.values(parsedEvents).forEach((dayEvents: EventData[]) => {
+          allEvents.push(...dayEvents);
         });
         
-        // Sort events by date
-        allEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        setEvents(allEvents);
-        console.log('Schedule loaded:', allEvents.length, 'events');
-      } else {
-        console.log('No schedule found in storage');
+        const upcoming = allEvents
+          .filter(event => isUpcoming(event.date))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        console.log('Upcoming events:', upcoming.length);
+        setUpcomingEvents(upcoming);
       }
     } catch (error) {
-      console.log('Error loading schedule:', error);
+      console.error('Error loading schedule:', error);
     }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'short', 
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
       month: 'short', 
       day: 'numeric' 
-    };
-    return date.toLocaleDateString('en-ZA', options);
+    });
   };
 
   const formatFullDate = (dateString: string) => {
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'long', 
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long',
       year: 'numeric', 
       month: 'long', 
       day: 'numeric' 
-    };
-    return date.toLocaleDateString('en-ZA', options);
+    });
   };
 
   const isUpcoming = (dateString: string) => {
@@ -93,81 +91,125 @@ export default function ScheduleScreen() {
     return eventDate >= today;
   };
 
-  const upcomingEvents = events.filter(event => isUpcoming(event.date));
-  const pastEvents = events.filter(event => !isUpcoming(event.date));
-
-  console.log('ScheduleScreen about to render UI...');
+  const getDaysUntilEvent = (dateString: string) => {
+    const eventDate = new Date(dateString);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    eventDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = eventDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays < 7) return `In ${diffDays} days`;
+    return `In ${Math.ceil(diffDays / 7)} week${Math.ceil(diffDays / 7) > 1 ? 's' : ''}`;
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {Platform.OS === 'ios' && (
-        <Stack.Screen
-          options={{
-            title: "Schedule - Olive Mind Marketing",
-            headerStyle: { backgroundColor: colors.card },
-            headerTintColor: colors.text,
-          }}
-        />
-      )}
+      <Stack.Screen 
+        options={{ 
+          title: 'Schedule',
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.card },
+          headerTitleStyle: { color: colors.text },
+        }} 
+      />
       
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Work Schedule</Text>
-          <Text style={styles.subtitle}>Your upcoming and past events</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Event Schedule</Text>
+        <Text style={styles.subtitle}>Upcoming events and activities</Text>
+        <View style={styles.roleIndicator}>
+          <IconSymbol 
+            name={isManager() ? "crown" : "eye"} 
+            size={16} 
+            color={isManager() ? colors.primary : colors.accent} 
+          />
+          <Text style={styles.roleText}>
+            {isManager() ? 'Manager - Can Edit' : 'Supervisor - View Only'}
+          </Text>
         </View>
+      </View>
 
-        {upcomingEvents.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Upcoming Events</Text>
-            {upcomingEvents.map((event) => (
-              <View key={event.id} style={[styles.eventCard, styles.upcomingCard]}>
-                <View style={styles.eventHeader}>
-                  <Text style={styles.eventTitle}>{event.event}</Text>
-                  <Text style={styles.eventDate}>{formatDate(event.date)}</Text>
-                </View>
-                <Text style={styles.eventVenue}>{event.venue}</Text>
-                <Text style={styles.eventDetail}>Promoters: {event.promoters}</Text>
-                <Text style={styles.eventDetail}>Arrival: {event.arrivalTime}</Text>
-                <Text style={styles.eventDetail}>Duration: {event.duration}</Text>
-                <Text style={styles.eventDetail}>Rate: {event.rate}</Text>
-                {event.brands && (
-                  <Text style={styles.eventDetail}>Brands: {event.brands}</Text>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {pastEvents.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Past Events</Text>
-            {pastEvents.map((event) => (
-              <View key={event.id} style={[styles.eventCard, styles.pastCard]}>
-                <View style={styles.eventHeader}>
-                  <Text style={[styles.eventTitle, styles.pastEventTitle]}>{event.event}</Text>
-                  <Text style={[styles.eventDate, styles.pastEventDate]}>{formatDate(event.date)}</Text>
-                </View>
-                <Text style={[styles.eventVenue, styles.pastEventText]}>{event.venue}</Text>
-                <Text style={[styles.eventDetail, styles.pastEventText]}>Promoters: {event.promoters}</Text>
-                <Text style={[styles.eventDetail, styles.pastEventText]}>Arrival: {event.arrivalTime}</Text>
-                <Text style={[styles.eventDetail, styles.pastEventText]}>Duration: {event.duration}</Text>
-                <Text style={[styles.eventDetail, styles.pastEventText]}>Rate: {event.rate}</Text>
-                {event.brands && (
-                  <Text style={[styles.eventDetail, styles.pastEventText]}>Brands: {event.brands}</Text>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {events.length === 0 && (
-          <View style={styles.emptyState}>
-            <IconSymbol name="calendar" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No Events Scheduled</Text>
-            <Text style={styles.emptySubtitle}>
-              Create events in the Calendar tab to see them here
+      <ScrollView style={styles.scheduleContainer} showsVerticalScrollIndicator={false}>
+        {upcomingEvents.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <IconSymbol name="clock" size={48} color={colors.textSecondary} />
+            <Text style={styles.emptyTitle}>No Upcoming Events</Text>
+            <Text style={styles.emptyMessage}>
+              {isManager() 
+                ? 'Create events in the calendar to see them here' 
+                : 'Upcoming events will appear here when scheduled'
+              }
             </Text>
           </View>
+        ) : (
+          <>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>Upcoming Events</Text>
+              <Text style={styles.summaryCount}>{upcomingEvents.length}</Text>
+            </View>
+
+            {upcomingEvents.map((event, index) => (
+              <View key={event.id} style={styles.eventCard}>
+                <View style={styles.eventHeader}>
+                  <View style={styles.eventDateInfo}>
+                    <Text style={styles.eventDate}>{formatDate(event.date)}</Text>
+                    <Text style={styles.eventCountdown}>{getDaysUntilEvent(event.date)}</Text>
+                  </View>
+                  <View style={styles.eventStatus}>
+                    <IconSymbol 
+                      name={getDaysUntilEvent(event.date) === 'Today' ? "exclamation-circle" : "clock"} 
+                      size={20} 
+                      color={getDaysUntilEvent(event.date) === 'Today' ? colors.secondary : colors.primary} 
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.eventContent}>
+                  <Text style={styles.eventTitle}>{event.event}</Text>
+                  <Text style={styles.eventVenue}>{event.venue}</Text>
+                  
+                  <View style={styles.eventDetails}>
+                    <View style={styles.eventDetailRow}>
+                      <IconSymbol name="users" size={16} color={colors.textSecondary} />
+                      <Text style={styles.eventDetailText}>Promoters: {event.promoters}</Text>
+                    </View>
+                    
+                    <View style={styles.eventDetailRow}>
+                      <IconSymbol name="clock" size={16} color={colors.textSecondary} />
+                      <Text style={styles.eventDetailText}>Time: {event.arrivalTime}</Text>
+                    </View>
+                    
+                    <View style={styles.eventDetailRow}>
+                      <IconSymbol name="hourglass" size={16} color={colors.textSecondary} />
+                      <Text style={styles.eventDetailText}>Duration: {event.duration}</Text>
+                    </View>
+                    
+                    {event.brands && (
+                      <View style={styles.eventDetailRow}>
+                        <IconSymbol name="tag" size={16} color={colors.textSecondary} />
+                        <Text style={styles.eventDetailText}>Brands: {event.brands}</Text>
+                      </View>
+                    )}
+                    
+                    <View style={styles.eventDetailRow}>
+                      <IconSymbol name="banknotes" size={16} color={colors.textSecondary} />
+                      <Text style={styles.eventDetailText}>Rate: R{event.rate}/hour</Text>
+                    </View>
+                  </View>
+
+                  {event.location && (
+                    <View style={styles.locationContainer}>
+                      <IconSymbol name="map-pin" size={16} color={colors.accent} />
+                      <Text style={styles.locationText}>{event.location}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ))}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -179,110 +221,146 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
     padding: 20,
-    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
   },
-  section: {
-    marginHorizontal: 16,
-    marginBottom: 24,
+  roleIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  roleText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 4,
+  },
+  scheduleContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
-    marginBottom: 12,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyMessage: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  summaryCard: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.card,
+    marginBottom: 4,
+  },
+  summaryCount: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.card,
   },
   eventCard: {
-    padding: 16,
+    backgroundColor: colors.card,
     borderRadius: 12,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  upcomingCard: {
-    backgroundColor: colors.card,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  pastCard: {
-    backgroundColor: colors.card,
-    opacity: 0.7,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.textSecondary,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '20',
   },
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  eventDateInfo: {
+    flex: 1,
+  },
+  eventDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  eventCountdown: {
+    fontSize: 12,
+    color: colors.primary,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  eventStatus: {
+    padding: 4,
+  },
+  eventContent: {
+    gap: 8,
   },
   eventTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.primary,
-    flex: 1,
-    marginRight: 8,
-  },
-  pastEventTitle: {
-    color: colors.textSecondary,
-  },
-  eventDate: {
-    fontSize: 14,
     fontWeight: '600',
-    color: colors.accent,
-  },
-  pastEventDate: {
-    color: colors.textSecondary,
+    color: colors.text,
   },
   eventVenue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  eventDetail: {
     fontSize: 14,
-    color: colors.text,
-    marginBottom: 4,
+    color: colors.primary,
+    fontWeight: '500',
   },
-  pastEventText: {
-    color: colors.textSecondary,
+  eventDetails: {
+    gap: 6,
+    marginTop: 8,
   },
-  emptyState: {
-    flex: 1,
+  eventDetailRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 64,
   },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 16,
+  eventDetailText: {
+    fontSize: 14,
     color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
+    marginLeft: 8,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+  },
+  locationText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
   },
 });

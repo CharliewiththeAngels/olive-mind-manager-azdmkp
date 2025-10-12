@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { Calendar, DateData } from 'react-native-calendars';
 import {
   View,
   Text,
@@ -11,12 +12,13 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Calendar, DateData } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Stack } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAuth } from '@/contexts/AuthContext';
+import RoleGuard from '@/components/RoleGuard';
 
 interface EventData {
   id: string;
@@ -33,118 +35,121 @@ interface EventData {
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
-  const m = hex.replace('#', '').match(/^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (!m) return hex; // fallback if not a 6-digit hex
-  const [, r, g, b] = m;
-  return `rgba(${parseInt(r,16)}, ${parseInt(g,16)}, ${parseInt(b,16)}, ${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 export default function CalendarScreen() {
-  console.log('CalendarScreen rendering...');
-  
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const { user, isManager } = useAuth();
   const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [showEventModal, setShowEventModal] = useState(false);
-  const [eventForm, setEventForm] = useState<Partial<EventData>>({
+  const [newEvent, setNewEvent] = useState<Partial<EventData>>({
     promoters: '',
     venue: '',
     location: '',
     event: '',
     arrivalTime: '',
     duration: '',
-    rate: 'R100 per hour',
+    rate: '',
     brands: '',
     mechanic: '',
   });
 
   useEffect(() => {
-    console.log('CalendarScreen useEffect running...');
     loadEvents();
   }, []);
 
   const loadEvents = async () => {
     try {
-      console.log('Loading events from AsyncStorage...');
-      const storedEvents = await AsyncStorage.getItem('olive_mind_events');
+      console.log('Loading events from storage...');
+      const storedEvents = await AsyncStorage.getItem('@events');
       if (storedEvents) {
-        setEvents(JSON.parse(storedEvents));
-        console.log('Events loaded:', JSON.parse(storedEvents));
-      } else {
-        console.log('No events found in storage');
+        const parsedEvents = JSON.parse(storedEvents);
+        console.log('Loaded events:', Object.keys(parsedEvents).length, 'dates');
+        setEvents(parsedEvents);
       }
     } catch (error) {
-      console.log('Error loading events:', error);
+      console.error('Error loading events:', error);
     }
   };
 
   const saveEvents = async (newEvents: { [key: string]: EventData[] }) => {
     try {
-      await AsyncStorage.setItem('olive_mind_events', JSON.stringify(newEvents));
+      console.log('Saving events to storage...');
+      await AsyncStorage.setItem('@events', JSON.stringify(newEvents));
       setEvents(newEvents);
-      console.log('Events saved successfully');
     } catch (error) {
-      console.log('Error saving events:', error);
+      console.error('Error saving events:', error);
     }
   };
 
   const onDayPress = (day: DateData) => {
     console.log('Day pressed:', day.dateString);
     setSelectedDate(day.dateString);
-    setShowEventModal(true);
+    
+    if (isManager()) {
+      setShowEventModal(true);
+    }
   };
 
   const createEvent = async () => {
-    if (!selectedDate || !eventForm.promoters || !eventForm.venue || !eventForm.event) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!selectedDate || !newEvent.promoters || !newEvent.venue || !newEvent.event) {
+      Alert.alert('Error', 'Please fill in all required fields (Promoters, Venue, Event)');
       return;
     }
 
-    const newEvent: EventData = {
-      id: Date.now().toString(),
+    const eventId = Date.now().toString();
+    const eventData: EventData = {
+      id: eventId,
       date: selectedDate,
-      promoters: eventForm.promoters || '',
-      venue: eventForm.venue || '',
-      location: eventForm.location || '',
-      event: eventForm.event || '',
-      arrivalTime: eventForm.arrivalTime || '',
-      duration: eventForm.duration || '',
-      rate: eventForm.rate || 'R100 per hour',
-      brands: eventForm.brands || '',
-      mechanic: eventForm.mechanic || '',
+      promoters: newEvent.promoters || '',
+      venue: newEvent.venue || '',
+      location: newEvent.location || '',
+      event: newEvent.event || '',
+      arrivalTime: newEvent.arrivalTime || '',
+      duration: newEvent.duration || '',
+      rate: newEvent.rate || '',
+      brands: newEvent.brands || '',
+      mechanic: newEvent.mechanic || '',
     };
+
+    console.log('Creating new event:', eventData);
 
     const updatedEvents = { ...events };
     if (!updatedEvents[selectedDate]) {
       updatedEvents[selectedDate] = [];
     }
-    updatedEvents[selectedDate].push(newEvent);
+    updatedEvents[selectedDate].push(eventData);
 
     await saveEvents(updatedEvents);
-    
-    // Generate message for the Messages tab
-    await generateMessage(newEvent);
-    
-    // Create payment entries
-    await createPaymentEntries(newEvent);
+    await generateMessage(eventData);
+    await createPaymentEntries(eventData);
 
-    setShowEventModal(false);
-    setEventForm({
+    // Reset form
+    setNewEvent({
       promoters: '',
       venue: '',
       location: '',
       event: '',
       arrivalTime: '',
       duration: '',
-      rate: 'R100 per hour',
+      rate: '',
       brands: '',
       mechanic: '',
     });
-
+    setShowEventModal(false);
+    
     Alert.alert('Success', 'Event created successfully!');
   };
 
   const generateMessage = async (event: EventData) => {
-    const message = `Good afternoon Miss ☀ Confirmation of work for Olive Mind Marketing
+    try {
+      console.log('Generating message for event:', event.id);
+      
+      const message = `Good afternoon Miss ☀ Confirmation of work for Olive Mind Marketing
 
 Promoters: ${event.promoters}
 Venue: ${event.venue}
@@ -153,7 +158,7 @@ Event: ${event.event}
 Date: ${formatDate(event.date)}
 Arrival Time: ${event.arrivalTime}
 Duration: ${event.duration}
-Rate: ${event.rate}
+Rate: R${event.rate} per hour
 Brands: ${event.brands}
 
 Mechanic: ${event.mechanic}
@@ -174,52 +179,54 @@ How the promotion will work:
 
 Ensure that your work station at all times is clean and presentable. There is a display showing stock and / or giveaways. Engage with each and every consumer in a professional and brand appropriate fashion. Convince consumers that our products are the ultimate brand of choice.`;
 
-    try {
-      const existingMessages = await AsyncStorage.getItem('olive_mind_messages');
-      const messages = existingMessages ? JSON.parse(existingMessages) : [];
-      messages.push({
+      const messageData = {
         id: Date.now().toString(),
         eventId: event.id,
-        message,
-        date: new Date().toISOString(),
+        message: message,
+        date: event.date,
         sent: false,
-      });
-      await AsyncStorage.setItem('olive_mind_messages', JSON.stringify(messages));
+      };
+
+      const storedMessages = await AsyncStorage.getItem('@messages');
+      const messages = storedMessages ? JSON.parse(storedMessages) : [];
+      messages.push(messageData);
+      await AsyncStorage.setItem('@messages', JSON.stringify(messages));
+      
       console.log('Message generated and saved');
     } catch (error) {
-      console.log('Error saving message:', error);
+      console.error('Error generating message:', error);
     }
   };
 
   const createPaymentEntries = async (event: EventData) => {
     try {
-      const existingPayments = await AsyncStorage.getItem('olive_mind_payments');
-      const payments = existingPayments ? JSON.parse(existingPayments) : [];
+      console.log('Creating payment entries for event:', event.id);
       
-      // Calculate hours from duration
+      const promoterNames = event.promoters.split('&').map(name => name.trim());
+      const rate = parseFloat(event.rate) || 0;
       const durationMatch = event.duration.match(/(\d+)\s*hours?/i);
       const hours = durationMatch ? parseInt(durationMatch[1]) : 0;
-      const rateMatch = event.rate.match(/R(\d+)/);
-      const hourlyRate = rateMatch ? parseInt(rateMatch[1]) : 100;
-      const totalAmount = hours * hourlyRate;
-
-      // Create payment entry for the event
-      payments.push({
-        id: `${Date.now()}-${event.id}`,
+      
+      const paymentEntries = promoterNames.map(promoter => ({
+        id: `${event.id}_${promoter.replace(/\s+/g, '_')}`,
         eventId: event.id,
-        promoters: event.promoters,
+        promoters: promoter,
         event: event.event,
         date: event.date,
-        hours,
-        rate: hourlyRate,
-        totalAmount,
+        hours: hours,
+        rate: rate,
+        totalAmount: hours * rate,
         paid: false,
-      });
+      }));
 
-      await AsyncStorage.setItem('olive_mind_payments', JSON.stringify(payments));
-      console.log('Payment entry created for event');
+      const storedPayments = await AsyncStorage.getItem('@payments');
+      const payments = storedPayments ? JSON.parse(storedPayments) : [];
+      payments.push(...paymentEntries);
+      await AsyncStorage.setItem('@payments', JSON.stringify(payments));
+      
+      console.log('Payment entries created:', paymentEntries.length);
     } catch (error) {
-      console.log('Error saving payments:', error);
+      console.error('Error creating payment entries:', error);
     }
   };
 
@@ -231,207 +238,224 @@ Ensure that your work station at all times is clean and presentable. There is a 
       month: 'long', 
       day: 'numeric' 
     };
-    return date.toLocaleDateString('en-ZA', options);
+    return date.toLocaleDateString('en-US', options);
   };
 
   const getMarkedDates = () => {
     const marked: { [key: string]: any } = {};
+    
     Object.keys(events).forEach(date => {
       marked[date] = {
         marked: true,
         dotColor: colors.primary,
-        selectedColor: colors.highlight,
+        selectedColor: colors.primary,
       };
     });
+
+    if (selectedDate) {
+      marked[selectedDate] = {
+        ...marked[selectedDate],
+        selected: true,
+        selectedColor: colors.primary,
+      };
+    }
+
     return marked;
   };
 
-  console.log('CalendarScreen about to render UI...');
-
   return (
     <SafeAreaView style={styles.container}>
-      {Platform.OS === 'ios' && (
-        <Stack.Screen
-          options={{
-            title: "Calendar - Olive Mind Marketing",
-            headerStyle: { backgroundColor: colors.card },
-            headerTintColor: colors.text,
-          }}
-        />
-      )}
+      <Stack.Screen 
+        options={{ 
+          title: 'Calendar',
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.card },
+          headerTitleStyle: { color: colors.text },
+        }} 
+      />
       
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Work Calendar</Text>
-          <Text style={styles.subtitle}>Tap a date to create an event</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Event Calendar</Text>
+        <Text style={styles.subtitle}>
+          {isManager() ? 'Tap a date to create an event' : 'View scheduled events'}
+        </Text>
+        <View style={styles.roleIndicator}>
+          <IconSymbol 
+            name={isManager() ? "crown" : "eye"} 
+            size={16} 
+            color={isManager() ? colors.primary : colors.accent} 
+          />
+          <Text style={styles.roleText}>
+            {isManager() ? 'Manager - Can Edit' : 'Supervisor - View Only'}
+          </Text>
         </View>
+      </View>
 
-        <Calendar
-          onDayPress={onDayPress}
-          markedDates={getMarkedDates()}
-          theme={{
-            backgroundColor: colors.card,
-            calendarBackground: colors.card,
-            textSectionTitleColor: colors.text,
-            selectedDayBackgroundColor: colors.primary,
-            selectedDayTextColor: colors.card,
-            todayTextColor: colors.primary,
-            dayTextColor: colors.text,
-            textDisabledColor: colors.textSecondary,
-            dotColor: colors.primary,
-            selectedDotColor: colors.card,
-            arrowColor: colors.primary,
-            monthTextColor: colors.text,
-            indicatorColor: colors.primary,
-          }}
-          style={styles.calendar}
-        />
+      <Calendar
+        style={styles.calendar}
+        theme={{
+          backgroundColor: colors.card,
+          calendarBackground: colors.card,
+          textSectionTitleColor: colors.textSecondary,
+          selectedDayBackgroundColor: colors.primary,
+          selectedDayTextColor: colors.card,
+          todayTextColor: colors.primary,
+          dayTextColor: colors.text,
+          textDisabledColor: colors.textSecondary,
+          dotColor: colors.primary,
+          selectedDotColor: colors.card,
+          arrowColor: colors.primary,
+          monthTextColor: colors.text,
+          indicatorColor: colors.primary,
+          textDayFontWeight: '500',
+          textMonthFontWeight: '600',
+          textDayHeaderFontWeight: '600',
+        }}
+        onDayPress={onDayPress}
+        markedDates={getMarkedDates()}
+      />
 
+      <ScrollView style={styles.eventsContainer}>
         {selectedDate && events[selectedDate] && (
-          <View style={styles.eventsContainer}>
-            <Text style={styles.eventsTitle}>Events for {formatDate(selectedDate)}</Text>
-            {events[selectedDate].map((event) => (
-              <View key={event.id} style={styles.eventCard}>
-                <Text style={styles.eventTitle}>{event.event}</Text>
-                <Text style={styles.eventDetail}>Venue: {event.venue}</Text>
+          <View style={styles.selectedDateEvents}>
+            <Text style={styles.selectedDateTitle}>
+              Events for {formatDate(selectedDate)}
+            </Text>
+            {events[selectedDate].map((event, index) => (
+              <View key={index} style={styles.eventCard}>
+                <View style={styles.eventHeader}>
+                  <Text style={styles.eventTitle}>{event.event}</Text>
+                  <Text style={styles.eventVenue}>{event.venue}</Text>
+                </View>
                 <Text style={styles.eventDetail}>Promoters: {event.promoters}</Text>
                 <Text style={styles.eventDetail}>Time: {event.arrivalTime}</Text>
+                <Text style={styles.eventDetail}>Duration: {event.duration}</Text>
+                <Text style={styles.eventDetail}>Rate: R{event.rate}/hour</Text>
+                <Text style={styles.eventDetail}>Brands: {event.brands}</Text>
               </View>
             ))}
           </View>
         )}
       </ScrollView>
 
-      <Modal
-        visible={showEventModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity
-              onPress={() => setShowEventModal(false)}
-              style={styles.cancelButton}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Create Event</Text>
-            <TouchableOpacity
-              onPress={createEvent}
-              style={styles.saveButton}
-            >
-              <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.formContainer}>
-            <Text style={styles.selectedDateText}>
-              Date: {selectedDate ? formatDate(selectedDate) : ''}
-            </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Promoters *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.promoters}
-                onChangeText={(text) => setEventForm({...eventForm, promoters: text})}
-                placeholder="e.g., Jackie & Noluthando"
-                placeholderTextColor={colors.textSecondary}
-              />
+      <RoleGuard allowedRoles={['manager']} showMessage={false}>
+        <Modal
+          visible={showEventModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowEventModal(false)}>
+                <Text style={styles.cancelButton}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Create Event</Text>
+              <TouchableOpacity onPress={createEvent}>
+                <Text style={styles.saveButton}>Save</Text>
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Venue *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.venue}
-                onChangeText={(text) => setEventForm({...eventForm, venue: text})}
-                placeholder="e.g., King's Park Stadium"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+            <ScrollView style={styles.modalContent}>
+              <Text style={styles.selectedDateText}>
+                Date: {selectedDate ? formatDate(selectedDate) : ''}
+              </Text>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Location</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.location}
-                onChangeText={(text) => setEventForm({...eventForm, location: text})}
-                placeholder="e.g., Jacko Jackson Dr, Stamford Hill, Durban, 4025"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Promoters *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.promoters}
+                  onChangeText={(text) => setNewEvent({...newEvent, promoters: text})}
+                  placeholder="e.g., Jackie & Noluthando"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Event *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.event}
-                onChangeText={(text) => setEventForm({...eventForm, event: text})}
-                placeholder="e.g., Springboks vs Argentina"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Venue *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.venue}
+                  onChangeText={(text) => setNewEvent({...newEvent, venue: text})}
+                  placeholder="e.g., King's Park Stadium"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Arrival Time</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.arrivalTime}
-                onChangeText={(text) => setEventForm({...eventForm, arrivalTime: text})}
-                placeholder="e.g., 14:00"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Location</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.location}
+                  onChangeText={(text) => setNewEvent({...newEvent, location: text})}
+                  placeholder="e.g., Jacko Jackson Dr, Stamford Hill, Durban, 4025"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Duration</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.duration}
-                onChangeText={(text) => setEventForm({...eventForm, duration: text})}
-                placeholder="e.g., 15:00- 21:00 (6 hours)"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Event *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.event}
+                  onChangeText={(text) => setNewEvent({...newEvent, event: text})}
+                  placeholder="e.g., Springboks vs Argentina"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Rate</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.rate}
-                onChangeText={(text) => setEventForm({...eventForm, rate: text})}
-                placeholder="e.g., R100 per hour"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Arrival Time</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.arrivalTime}
+                  onChangeText={(text) => setNewEvent({...newEvent, arrivalTime: text})}
+                  placeholder="e.g., 14:00"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Brands</Text>
-              <TextInput
-                style={styles.textInput}
-                value={eventForm.brands}
-                onChangeText={(text) => setEventForm({...eventForm, brands: text})}
-                placeholder="e.g., Klipdrift"
-                placeholderTextColor={colors.textSecondary}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Duration</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.duration}
+                  onChangeText={(text) => setNewEvent({...newEvent, duration: text})}
+                  placeholder="e.g., 15:00- 21:00 (6 hours)"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Mechanic</Text>
-              <TextInput
-                style={[styles.textInput, styles.textArea]}
-                value={eventForm.mechanic}
-                onChangeText={(text) => setEventForm({...eventForm, mechanic: text})}
-                placeholder="e.g., Hosting guests in the Heineken and Klipdrift Suite."
-                placeholderTextColor={colors.textSecondary}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Rate (per hour)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.rate}
+                  onChangeText={(text) => setNewEvent({...newEvent, rate: text})}
+                  placeholder="e.g., 100"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Brands</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newEvent.brands}
+                  onChangeText={(text) => setNewEvent({...newEvent, brands: text})}
+                  placeholder="e.g., Klipdrift"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Mechanic</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={newEvent.mechanic}
+                  onChangeText={(text) => setNewEvent({...newEvent, mechanic: text})}
+                  placeholder="e.g., Hosting guests in the Heineken and Klipdrift Suite."
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      </RoleGuard>
     </SafeAreaView>
   );
 }
@@ -441,65 +465,77 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollView: {
-    flex: 1,
-  },
   header: {
     padding: 20,
-    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  roleIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  roleText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 4,
   },
   calendar: {
-    marginHorizontal: 16,
-    borderRadius: 12,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   eventsContainer: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    flex: 1,
+    padding: 20,
   },
-  eventsTitle: {
+  selectedDateEvents: {
+    marginBottom: 20,
+  },
+  selectedDateTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 12,
   },
   eventCard: {
-    padding: 12,
-    backgroundColor: colors.background,
-    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '20',
+  },
+  eventHeader: {
     marginBottom: 8,
   },
   eventTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.text,
+  },
+  eventVenue: {
+    fontSize: 14,
     color: colors.primary,
-    marginBottom: 4,
+    marginTop: 2,
   },
   eventDetail: {
     fontSize: 14,
-    color: colors.text,
-    marginBottom: 2,
+    color: colors.textSecondary,
+    marginBottom: 4,
   },
   modalContainer: {
     flex: 1,
@@ -509,44 +545,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: hexToRgba(colors.textSecondary, 0.125),
+    padding: 20,
     backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: colors.text,
   },
   cancelButton: {
-    padding: 8,
-  },
-  cancelButtonText: {
-    color: colors.secondary,
     fontSize: 16,
+    color: colors.secondary,
   },
   saveButton: {
-    padding: 8,
-  },
-  saveButtonText: {
-    color: colors.primary,
     fontSize: 16,
-    fontWeight: 'bold',
+    color: colors.primary,
+    fontWeight: '600',
   },
-  formContainer: {
+  modalContent: {
     flex: 1,
-    padding: 16,
+    padding: 20,
   },
   selectedDateText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 20,
+    fontWeight: '600',
+    color: colors.text,
     textAlign: 'center',
+    marginBottom: 24,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 16,
@@ -554,14 +584,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
-  textInput: {
-    borderWidth: 1,
-    borderColor: hexToRgba(colors.textSecondary, 0.25),
+  input: {
+    backgroundColor: colors.card,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
     color: colors.text,
-    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.textSecondary + '20',
   },
   textArea: {
     height: 80,
