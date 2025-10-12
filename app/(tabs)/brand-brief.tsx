@@ -18,8 +18,7 @@ import RoleGuard from '@/components/RoleGuard';
 import { Stack } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import * as DocumentPicker from 'expo-document-picker';
-import { useBrandBriefs, BrandBrief } from '@/hooks/useBrandBriefs';
+import { useBrandNotes, BrandNote } from '@/hooks/useBrandNotes';
 
 const styles = StyleSheet.create({
   container: {
@@ -58,6 +57,19 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  searchContainer: {
+    marginBottom: 20,
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -80,80 +92,83 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
-  briefCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-      web: {
-        boxShadow: `0 2px 8px ${colors.shadow}20`,
-      },
-    }),
+  brandSection: {
+    marginBottom: 24,
   },
-  briefHeader: {
+  brandHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 12,
-  },
-  briefInfo: {
-    flex: 1,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   brandName: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
+    flex: 1,
   },
-  briefTitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 8,
-  },
-  briefDate: {
+  brandCount: {
     fontSize: 14,
     color: colors.textSecondary,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  briefActions: {
+  noteCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+      web: {
+        boxShadow: `0 1px 4px ${colors.shadow}20`,
+      },
+    }),
+  },
+  noteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  noteTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  noteActions: {
     flexDirection: 'row',
     gap: 8,
   },
   actionButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.background,
+    padding: 6,
+    borderRadius: 6,
   },
-  briefContent: {
+  noteContent: {
     fontSize: 14,
-    color: colors.text,
+    color: colors.textSecondary,
     lineHeight: 20,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  fileInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  fileName: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
+  noteDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   modalOverlay: {
     flex: 1,
@@ -198,37 +213,6 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: 'top',
   },
-  fileUploadButton: {
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  fileUploadText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  selectedFile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: colors.primary + '20',
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  selectedFileName: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-  },
-  removeFileButton: {
-    padding: 4,
-  },
   modalActions: {
     flexDirection: 'row',
     gap: 12,
@@ -268,128 +252,80 @@ const styles = StyleSheet.create({
   },
 });
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export default function BrandBriefScreen() {
   const [showModal, setShowModal] = useState(false);
-  const [editingBrief, setEditingBrief] = useState<BrandBrief | null>(null);
+  const [editingNote, setEditingNote] = useState<BrandNote | null>(null);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Form state
   const [brandName, setBrandName] = useState('');
-  const [briefTitle, setBriefTitle] = useState('');
-  const [briefContent, setBriefContent] = useState('');
-  const [selectedFile, setSelectedFile] = useState<{
-    uri: string;
-    name: string;
-    type: string;
-    size: number;
-  } | null>(null);
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteContent, setNoteContent] = useState('');
 
   const { user, isManager } = useAuth();
-  const { briefs, loading, createBrief, updateBrief, deleteBrief, uploadFile, deleteFile } = useBrandBriefs();
+  const { notes, loading, createNote, updateNote, deleteNote, getNotesByBrand } = useBrandNotes();
 
   const openCreateModal = () => {
-    setEditingBrief(null);
+    setEditingNote(null);
     setBrandName('');
-    setBriefTitle('');
-    setBriefContent('');
-    setSelectedFile(null);
+    setNoteTitle('');
+    setNoteContent('');
     setShowModal(true);
   };
 
-  const openEditModal = (brief: BrandBrief) => {
-    setEditingBrief(brief);
-    setBrandName(brief.brand_name);
-    setBriefTitle(brief.brief_title);
-    setBriefContent(brief.brief_content || '');
-    setSelectedFile(null);
+  const openEditModal = (note: BrandNote) => {
+    setEditingNote(note);
+    setBrandName(note.brand_name);
+    setNoteTitle(note.note_title);
+    setNoteContent(note.note_content || '');
     setShowModal(true);
   };
 
-  const pickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const file = result.assets[0];
-        setSelectedFile({
-          uri: file.uri,
-          name: file.name,
-          type: file.mimeType || 'application/octet-stream',
-          size: file.size || 0,
-        });
-      }
-    } catch (error) {
-      console.error('Error picking document:', error);
-      Alert.alert('Error', 'Failed to pick document');
-    }
-  };
-
-  const saveBrief = async () => {
-    if (!brandName.trim() || !briefTitle.trim()) {
-      Alert.alert('Error', 'Please fill in brand name and brief title');
+  const saveNote = async () => {
+    if (!brandName.trim()) {
+      Alert.alert('Error', 'Please enter a brand name');
       return;
     }
 
-    if (!briefContent.trim()) {
-      Alert.alert('Error', 'Please provide brief content');
+    if (!noteTitle.trim()) {
+      Alert.alert('Error', 'Please enter a note title');
       return;
     }
 
     try {
       setSaving(true);
-      let fileData = null;
 
-      // Upload file if selected (temporarily disabled)
-      // if (selectedFile) {
-      //   fileData = await uploadFile(selectedFile, user?.email || 'unknown');
-      // }
-
-      const briefData = {
+      const noteData = {
         brand_name: brandName.trim(),
-        brief_title: briefTitle.trim(),
-        brief_content: briefContent.trim() || null,
-        file_url: fileData?.url || null,
-        file_name: fileData?.name || null,
-        file_type: fileData?.type || null,
+        note_title: noteTitle.trim(),
+        note_content: noteContent.trim() || null,
         created_by: user?.email || 'unknown',
-        updated_at: new Date().toISOString(),
       };
 
       let success = false;
-      if (editingBrief) {
-        // Update existing brief
-        success = await updateBrief(editingBrief.id, briefData);
+      if (editingNote) {
+        success = await updateNote(editingNote.id, noteData);
       } else {
-        // Create new brief
-        success = await createBrief(briefData);
+        success = await createNote(noteData);
       }
 
       if (success) {
         setShowModal(false);
-        Alert.alert('Success', `Brand brief ${editingBrief ? 'updated' : 'created'} successfully`);
+        // Don't show success alert for better UX (like iPhone Notes)
       }
     } catch (error) {
-      console.error('Error saving brief:', error);
-      Alert.alert('Error', 'Failed to save brand brief');
+      console.error('Error saving note:', error);
+      Alert.alert('Error', 'Failed to save note');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteBrief = async (brief: BrandBrief) => {
+  const handleDeleteNote = async (note: BrandNote) => {
     Alert.alert(
-      'Delete Brand Brief',
-      `Are you sure you want to delete "${brief.brief_title}"?`,
+      'Delete Note',
+      `Are you sure you want to delete "${note.note_title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -397,15 +333,10 @@ export default function BrandBriefScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete brief from database using the hook function
-              const success = await deleteBrief(brief.id);
-              
-              if (success) {
-                Alert.alert('Success', 'Brand brief deleted successfully');
-              }
+              await deleteNote(note.id);
             } catch (error) {
-              console.error('Error deleting brief:', error);
-              Alert.alert('Error', 'Failed to delete brand brief');
+              console.error('Error deleting note:', error);
+              Alert.alert('Error', 'Failed to delete note');
             }
           },
         },
@@ -415,34 +346,49 @@ export default function BrandBriefScreen() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      return 'Today';
+    } else if (diffDays === 2) {
+      return 'Yesterday';
+    } else if (diffDays <= 7) {
+      return `${diffDays - 1} days ago`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      });
+    }
   };
 
-  const openFile = async (brief: BrandBrief) => {
-    if (brief.file_url) {
-      // For web, open in new tab
-      if (Platform.OS === 'web') {
-        window.open(brief.file_url, '_blank');
-      } else {
-        // For mobile, you might want to use a WebView or external app
-        Alert.alert('File', `File: ${brief.file_name}\nTap OK to view content below.`);
+  const filteredNotes = notes.filter(note => 
+    note.brand_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    note.note_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (note.note_content && note.note_content.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const groupedNotes = () => {
+    const grouped: { [key: string]: BrandNote[] } = {};
+    filteredNotes.forEach(note => {
+      if (!grouped[note.brand_name]) {
+        grouped[note.brand_name] = [];
       }
-    }
+      grouped[note.brand_name].push(note);
+    });
+    return grouped;
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Brand Brief', headerShown: false }} />
+        <Stack.Screen options={{ title: 'Brand Notes', headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading brand briefs...</Text>
+          <Text style={styles.loadingText}>Loading notes...</Text>
         </View>
       </SafeAreaView>
     );
@@ -450,81 +396,99 @@ export default function BrandBriefScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Brand Brief', headerShown: false }} />
+      <Stack.Screen options={{ title: 'Brand Notes', headerShown: false }} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Brand Brief</Text>
-        <RoleGuard requiredRole="manager">
-          <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
-            <IconSymbol name="plus" size={16} color={colors.background} />
-            <Text style={styles.addButtonText}>Add Brief</Text>
-          </TouchableOpacity>
-        </RoleGuard>
+        <Text style={styles.headerTitle}>Brand Notes</Text>
+        <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
+          <IconSymbol name="plus" size={16} color={colors.background} />
+          <Text style={styles.addButtonText}>New Note</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {briefs.length === 0 ? (
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search notes..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        {filteredNotes.length === 0 ? (
           <View style={styles.emptyState}>
             <IconSymbol 
-              name="document" 
+              name="note" 
               size={64} 
               color={colors.textSecondary} 
               style={styles.emptyStateIcon} 
             />
-            <Text style={styles.emptyStateTitle}>No Brand Briefs</Text>
+            <Text style={styles.emptyStateTitle}>
+              {searchQuery ? 'No matching notes' : 'No Notes Yet'}
+            </Text>
             <Text style={styles.emptyStateText}>
-              {isManager() 
-                ? "Create your first brand brief to store important brand information and guidelines."
-                : "No brand briefs have been created yet."
+              {searchQuery 
+                ? 'Try adjusting your search terms'
+                : 'Tap "New Note" to create your first brand note'
               }
             </Text>
           </View>
         ) : (
-          briefs.map((brief) => (
-            <View key={brief.id} style={styles.briefCard}>
-              <View style={styles.briefHeader}>
-                <View style={styles.briefInfo}>
-                  <Text style={styles.brandName}>{brief.brand_name}</Text>
-                  <Text style={styles.briefTitle}>{brief.brief_title}</Text>
-                  <Text style={styles.briefDate}>
-                    Created {formatDate(brief.created_at)}
-                  </Text>
-                </View>
-                <RoleGuard requiredRole="manager">
-                  <View style={styles.briefActions}>
-                    <TouchableOpacity 
-                      style={styles.actionButton} 
-                      onPress={() => openEditModal(brief)}
-                    >
-                      <IconSymbol name="pencil" size={16} color={colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.actionButton} 
-                      onPress={() => handleDeleteBrief(brief)}
-                    >
-                      <IconSymbol name="trash" size={16} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                </RoleGuard>
+          Object.entries(groupedNotes()).map(([brand, brandNotes]) => (
+            <View key={brand} style={styles.brandSection}>
+              <View style={styles.brandHeader}>
+                <Text style={styles.brandName}>{brand}</Text>
+                <Text style={styles.brandCount}>{brandNotes.length}</Text>
               </View>
-
-              {brief.brief_content && (
-                <Text style={styles.briefContent} numberOfLines={3}>
-                  {brief.brief_content}
-                </Text>
-              )}
-
-              {/* File display temporarily disabled */}
-              {/* {brief.file_url && (
+              
+              {brandNotes.map((note) => (
                 <TouchableOpacity 
-                  style={styles.fileInfo} 
-                  onPress={() => openFile(brief)}
+                  key={note.id} 
+                  style={styles.noteCard}
+                  onPress={() => openEditModal(note)}
+                  activeOpacity={0.7}
                 >
-                  <IconSymbol name="document" size={16} color={colors.primary} />
-                  <Text style={styles.fileName}>{brief.file_name}</Text>
-                  <IconSymbol name="chevron.right" size={16} color={colors.textSecondary} />
+                  <View style={styles.noteHeader}>
+                    <Text style={styles.noteTitle} numberOfLines={1}>
+                      {note.note_title}
+                    </Text>
+                    <RoleGuard requiredRole="manager">
+                      <View style={styles.noteActions}>
+                        <TouchableOpacity 
+                          style={styles.actionButton} 
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            openEditModal(note);
+                          }}
+                        >
+                          <IconSymbol name="pencil" size={14} color={colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={styles.actionButton} 
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleDeleteNote(note);
+                          }}
+                        >
+                          <IconSymbol name="trash" size={14} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    </RoleGuard>
+                  </View>
+
+                  {note.note_content && (
+                    <Text style={styles.noteContent} numberOfLines={2}>
+                      {note.note_content}
+                    </Text>
+                  )}
+
+                  <Text style={styles.noteDate}>
+                    {formatDate(note.updated_at)}
+                  </Text>
                 </TouchableOpacity>
-              )} */}
+              ))}
             </View>
           ))
         )}
@@ -540,12 +504,12 @@ export default function BrandBriefScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingBrief ? 'Edit Brand Brief' : 'Create Brand Brief'}
+              {editingNote ? 'Edit Note' : 'New Note'}
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Brand Name *</Text>
+                <Text style={styles.label}>Brand</Text>
                 <TextInput
                   style={styles.input}
                   value={brandName}
@@ -556,51 +520,27 @@ export default function BrandBriefScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Brief Title *</Text>
+                <Text style={styles.label}>Title</Text>
                 <TextInput
                   style={styles.input}
-                  value={briefTitle}
-                  onChangeText={setBriefTitle}
-                  placeholder="Enter brief title"
+                  value={noteTitle}
+                  onChangeText={setNoteTitle}
+                  placeholder="Enter note title"
                   placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Brief Content</Text>
+                <Text style={styles.label}>Notes</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  value={briefContent}
-                  onChangeText={setBriefContent}
-                  placeholder="Enter brief content or upload a file below"
+                  value={noteContent}
+                  onChangeText={setNoteContent}
+                  placeholder="Enter your notes about this brand..."
                   placeholderTextColor={colors.textSecondary}
                   multiline
                 />
               </View>
-
-              {/* File upload temporarily disabled for initial release */}
-              {/* <View style={styles.formGroup}>
-                <Text style={styles.label}>Upload File (Optional)</Text>
-                <TouchableOpacity style={styles.fileUploadButton} onPress={pickDocument}>
-                  <IconSymbol name="document" size={32} color={colors.textSecondary} />
-                  <Text style={styles.fileUploadText}>
-                    Tap to upload PDF, Word, or Text file
-                  </Text>
-                </TouchableOpacity>
-
-                {selectedFile && (
-                  <View style={styles.selectedFile}>
-                    <IconSymbol name="document" size={16} color={colors.primary} />
-                    <Text style={styles.selectedFileName}>{selectedFile.name}</Text>
-                    <TouchableOpacity 
-                      style={styles.removeFileButton}
-                      onPress={() => setSelectedFile(null)}
-                    >
-                      <IconSymbol name="xmark" size={16} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View> */}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -615,14 +555,14 @@ export default function BrandBriefScreen() {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modalButton, styles.saveButton]} 
-                onPress={saveBrief}
+                onPress={saveNote}
                 disabled={saving}
               >
                 {saving ? (
                   <ActivityIndicator size="small" color={colors.background} />
                 ) : (
                   <Text style={[styles.modalButtonText, styles.saveButtonText]}>
-                    {editingBrief ? 'Update' : 'Create'}
+                    {editingNote ? 'Save' : 'Create'}
                   </Text>
                 )}
               </TouchableOpacity>
