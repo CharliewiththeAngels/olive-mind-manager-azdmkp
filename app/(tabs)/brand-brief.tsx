@@ -294,8 +294,6 @@ export default function BrandBriefScreen() {
   const { user, isManager } = useAuth();
   const { briefs, loading, createBrief, updateBrief, deleteBrief, uploadFile, deleteFile } = useBrandBriefs();
 
-
-
   const openCreateModal = () => {
     setEditingBrief(null);
     setBrandName('');
@@ -335,8 +333,6 @@ export default function BrandBriefScreen() {
       Alert.alert('Error', 'Failed to pick document');
     }
   };
-
-
 
   const saveBrief = async () => {
     if (!brandName.trim() || !briefTitle.trim()) {
@@ -390,7 +386,7 @@ export default function BrandBriefScreen() {
     }
   };
 
-  const deleteBrief = async (brief: BrandBrief) => {
+  const handleDeleteBrief = async (brief: BrandBrief) => {
     Alert.alert(
       'Delete Brand Brief',
       `Are you sure you want to delete "${brief.brief_title}"?`,
@@ -401,7 +397,7 @@ export default function BrandBriefScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete brief from database
+              // Delete brief from database using the hook function
               const success = await deleteBrief(brief.id);
               
               if (success) {
@@ -504,7 +500,7 @@ export default function BrandBriefScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={styles.actionButton} 
-                      onPress={() => deleteBrief(brief)}
+                      onPress={() => handleDeleteBrief(brief)}
                     >
                       <IconSymbol name="trash" size={16} color={colors.error} />
                     </TouchableOpacity>
