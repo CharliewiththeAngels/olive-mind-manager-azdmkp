@@ -38,7 +38,7 @@ interface FloatingTabBarProps {
 
 export default function FloatingTabBar({
   tabs,
-  containerWidth = 240,
+  containerWidth = 300,
   borderRadius = 25,
   bottomMargin
 }: FloatingTabBarProps) {

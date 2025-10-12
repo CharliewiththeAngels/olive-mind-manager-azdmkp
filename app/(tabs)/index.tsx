@@ -151,6 +151,20 @@ export default function IndexScreen() {
             </View>
             <IconSymbol name="chevron-right" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.navButton} 
+            onPress={() => navigateToTab('brand-brief')}
+          >
+            <IconSymbol name="document" size={24} color={colors.primary} />
+            <View style={styles.navButtonContent}>
+              <Text style={styles.navButtonTitle}>Brand Brief</Text>
+              <Text style={styles.navButtonSubtitle}>
+                {isManager() ? 'Create and manage brand briefs' : 'View brand information'}
+              </Text>
+            </View>
+            <IconSymbol name="chevron-right" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>

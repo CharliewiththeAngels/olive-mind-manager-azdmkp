@@ -63,6 +63,12 @@ export default function TabLayout() {
       icon: 'creditcard',
       label: 'Payments',
     },
+    {
+      name: 'brand-brief',
+      route: '/(tabs)/brand-brief',
+      icon: 'document',
+      label: 'Brand Brief',
+    },
   ];
 
   // Use NativeTabs for iOS, custom FloatingTabBar for Android and Web
@@ -89,6 +95,10 @@ export default function TabLayout() {
           <Icon sf="creditcard" drawable="ic_payment" />
           <Label>Payments</Label>
         </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="brand-brief">
+          <Icon sf="document" drawable="ic_document" />
+          <Label>Brand Brief</Label>
+        </NativeTabs.Trigger>
       </NativeTabs>
     );
   }
@@ -107,6 +117,7 @@ export default function TabLayout() {
         <Stack.Screen name="schedule" />
         <Stack.Screen name="messages" />
         <Stack.Screen name="payments" />
+        <Stack.Screen name="brand-brief" />
       </Stack>
       <FloatingTabBar tabs={tabs} />
     </>
