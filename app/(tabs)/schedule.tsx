@@ -1,9 +1,9 @@
 
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { IconSymbol } from '@/components/IconSymbol';
 import { Stack } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -12,8 +12,8 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
+import { colors } from '@/styles/commonStyles';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface EventData {
   id: string;
@@ -29,187 +29,269 @@ interface EventData {
   mechanic: string;
 }
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export default function ScheduleScreen() {
-  const { user, isManager } = useAuth();
-  const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
-  const [upcomingEvents, setUpcomingEvents] = useState<EventData[]>([]);
+  const { user } = useAuth();
+  const [events, setEvents] = useState<EventData[]>([]);
 
   useEffect(() => {
     loadSchedule();
+    
+    // Subscribe to real-time changes
+    const subscription = supabase
+      .channel('schedule_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        console.log('Schedule changed, reloading...');
+        loadSchedule();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadSchedule = async () => {
     try {
-      console.log('Loading schedule from storage...');
-      const storedEvents = await AsyncStorage.getItem('@events');
-      if (storedEvents) {
-        const parsedEvents = JSON.parse(storedEvents);
-        console.log('Loaded events for schedule:', Object.keys(parsedEvents).length, 'dates');
-        setEvents(parsedEvents);
-        
-        // Filter and sort upcoming events
-        const allEvents: EventData[] = [];
-        Object.values(parsedEvents).forEach((dayEvents: EventData[]) => {
-          allEvents.push(...dayEvents);
-        });
-        
-        const upcoming = allEvents
-          .filter(event => isUpcoming(event.date))
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        
-        console.log('Upcoming events:', upcoming.length);
-        setUpcomingEvents(upcoming);
+      console.log('Loading schedule from Supabase...');
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('date', { ascending: true });
+
+      if (error) {
+        console.error('Error loading schedule:', error);
+        return;
+      }
+
+      if (data) {
+        console.log('Loaded schedule events:', data.length);
+        const eventsData: EventData[] = data.map((event) => ({
+          id: event.id,
+          date: event.date,
+          promoters: event.promoters,
+          venue: event.venue,
+          location: event.location,
+          event: event.event,
+          arrivalTime: event.arrival_time,
+          duration: event.duration,
+          rate: event.rate,
+          brands: event.brands,
+          mechanic: event.mechanic,
+        }));
+        setEvents(eventsData);
       }
     } catch (error) {
-      console.error('Error loading schedule:', error);
+      console.error('Error in loadSchedule:', error);
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+    };
+    return date.toLocaleDateString('en-US', options);
   };
 
-  const formatFullDate = (dateString: string) => {
+  const formatFullDate = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
+    const options: Intl.DateTimeFormatOptions = {
       weekday: 'long',
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    };
+    return date.toLocaleDateString('en-US', options);
   };
 
-  const isUpcoming = (dateString: string) => {
+  const isUpcoming = (dateString: string): boolean => {
     const eventDate = new Date(dateString);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return eventDate >= today;
   };
 
-  const getDaysUntilEvent = (dateString: string) => {
+  const getDaysUntilEvent = (dateString: string): number => {
     const eventDate = new Date(dateString);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     eventDate.setHours(0, 0, 0, 0);
-    
     const diffTime = eventDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
-    if (diffDays < 7) return `In ${diffDays} days`;
-    return `In ${Math.ceil(diffDays / 7)} week${Math.ceil(diffDays / 7) > 1 ? 's' : ''}`;
+    return diffDays;
   };
 
+  const upcomingEvents = events.filter((event) => isUpcoming(event.date));
+  const pastEvents = events.filter((event) => !isUpcoming(event.date));
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen 
-        options={{ 
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Stack.Screen
+        options={{
           title: 'Schedule',
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.card },
-          headerTitleStyle: { color: colors.text },
-        }} 
+          headerShown: false,
+        }}
       />
       
       <View style={styles.header}>
-        <Text style={styles.title}>Event Schedule</Text>
-        <Text style={styles.subtitle}>Upcoming events and activities</Text>
-        <View style={styles.roleIndicator}>
-          <IconSymbol 
-            name={isManager() ? "crown" : "eye"} 
-            size={16} 
-            color={isManager() ? colors.primary : colors.accent} 
-          />
-          <Text style={styles.roleText}>
-            {isManager() ? 'Manager - Can Edit' : 'Supervisor - View Only'}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Schedule</Text>
       </View>
 
-      <ScrollView style={styles.scheduleContainer} showsVerticalScrollIndicator={false}>
-        {upcomingEvents.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconSymbol name="clock" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No Upcoming Events</Text>
-            <Text style={styles.emptyMessage}>
-              {isManager() 
-                ? 'Create events in the calendar to see them here' 
-                : 'Upcoming events will appear here when scheduled'
-              }
-            </Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Upcoming Events</Text>
-              <Text style={styles.summaryCount}>{upcomingEvents.length}</Text>
-            </View>
+      <ScrollView style={styles.content}>
+        {upcomingEvents.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Upcoming Events</Text>
+            {upcomingEvents.map((event, index) => {
+              const daysUntil = getDaysUntilEvent(event.date);
+              return (
+                <View key={index} style={styles.eventCard}>
+                  <View style={styles.eventDateBadge}>
+                    <Text style={styles.eventDateBadgeText}>{formatDate(event.date)}</Text>
+                  </View>
 
-            {upcomingEvents.map((event, index) => (
-              <View key={event.id} style={styles.eventCard}>
-                <View style={styles.eventHeader}>
-                  <View style={styles.eventDateInfo}>
-                    <Text style={styles.eventDate}>{formatDate(event.date)}</Text>
-                    <Text style={styles.eventCountdown}>{getDaysUntilEvent(event.date)}</Text>
+                  <View style={styles.eventContent}>
+                    <Text style={styles.eventTitle}>{event.event}</Text>
+                    <Text style={styles.eventDate}>{formatFullDate(event.date)}</Text>
+
+                    {daysUntil === 0 && (
+                      <View style={styles.todayBadge}>
+                        <IconSymbol
+                          ios_icon_name="calendar.badge.clock"
+                          android_material_icon_name="today"
+                          size={16}
+                          color="#fff"
+                        />
+                        <Text style={styles.todayBadgeText}>Today</Text>
+                      </View>
+                    )}
+
+                    {daysUntil === 1 && (
+                      <View style={styles.tomorrowBadge}>
+                        <IconSymbol
+                          ios_icon_name="calendar"
+                          android_material_icon_name="event"
+                          size={16}
+                          color="#fff"
+                        />
+                        <Text style={styles.tomorrowBadgeText}>Tomorrow</Text>
+                      </View>
+                    )}
+
+                    {daysUntil > 1 && (
+                      <Text style={styles.daysUntil}>In {daysUntil} days</Text>
+                    )}
+
+                    <View style={styles.eventDetails}>
+                      <View style={styles.eventDetailRow}>
+                        <IconSymbol
+                          ios_icon_name="person.2"
+                          android_material_icon_name="people"
+                          size={16}
+                          color={hexToRgba(colors.text, 0.6)}
+                        />
+                        <Text style={styles.eventDetailText}>{event.promoters}</Text>
+                      </View>
+
+                      <View style={styles.eventDetailRow}>
+                        <IconSymbol
+                          ios_icon_name="mappin"
+                          android_material_icon_name="place"
+                          size={16}
+                          color={hexToRgba(colors.text, 0.6)}
+                        />
+                        <Text style={styles.eventDetailText}>{event.venue}</Text>
+                      </View>
+
+                      <View style={styles.eventDetailRow}>
+                        <IconSymbol
+                          ios_icon_name="clock"
+                          android_material_icon_name="schedule"
+                          size={16}
+                          color={hexToRgba(colors.text, 0.6)}
+                        />
+                        <Text style={styles.eventDetailText}>
+                          {event.arrivalTime} • {event.duration}
+                        </Text>
+                      </View>
+
+                      <View style={styles.eventDetailRow}>
+                        <IconSymbol
+                          ios_icon_name="tag"
+                          android_material_icon_name="label"
+                          size={16}
+                          color={hexToRgba(colors.text, 0.6)}
+                        />
+                        <Text style={styles.eventDetailText}>{event.brands}</Text>
+                      </View>
+                    </View>
                   </View>
-                  <View style={styles.eventStatus}>
-                    <IconSymbol 
-                      name={getDaysUntilEvent(event.date) === 'Today' ? "exclamation-circle" : "clock"} 
-                      size={20} 
-                      color={getDaysUntilEvent(event.date) === 'Today' ? colors.secondary : colors.primary} 
-                    />
-                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {pastEvents.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Past Events</Text>
+            {pastEvents.map((event, index) => (
+              <View key={index} style={[styles.eventCard, styles.pastEventCard]}>
+                <View style={[styles.eventDateBadge, styles.pastEventDateBadge]}>
+                  <Text style={styles.eventDateBadgeText}>{formatDate(event.date)}</Text>
                 </View>
 
                 <View style={styles.eventContent}>
                   <Text style={styles.eventTitle}>{event.event}</Text>
-                  <Text style={styles.eventVenue}>{event.venue}</Text>
-                  
+                  <Text style={styles.eventDate}>{formatFullDate(event.date)}</Text>
+
                   <View style={styles.eventDetails}>
                     <View style={styles.eventDetailRow}>
-                      <IconSymbol name="users" size={16} color={colors.textSecondary} />
-                      <Text style={styles.eventDetailText}>Promoters: {event.promoters}</Text>
+                      <IconSymbol
+                        ios_icon_name="person.2"
+                        android_material_icon_name="people"
+                        size={16}
+                        color={hexToRgba(colors.text, 0.6)}
+                      />
+                      <Text style={styles.eventDetailText}>{event.promoters}</Text>
                     </View>
-                    
+
                     <View style={styles.eventDetailRow}>
-                      <IconSymbol name="clock" size={16} color={colors.textSecondary} />
-                      <Text style={styles.eventDetailText}>Time: {event.arrivalTime}</Text>
-                    </View>
-                    
-                    <View style={styles.eventDetailRow}>
-                      <IconSymbol name="hourglass" size={16} color={colors.textSecondary} />
-                      <Text style={styles.eventDetailText}>Duration: {event.duration}</Text>
-                    </View>
-                    
-                    {event.brands && (
-                      <View style={styles.eventDetailRow}>
-                        <IconSymbol name="tag" size={16} color={colors.textSecondary} />
-                        <Text style={styles.eventDetailText}>Brands: {event.brands}</Text>
-                      </View>
-                    )}
-                    
-                    <View style={styles.eventDetailRow}>
-                      <IconSymbol name="banknotes" size={16} color={colors.textSecondary} />
-                      <Text style={styles.eventDetailText}>Rate: R{event.rate}/hour</Text>
+                      <IconSymbol
+                        ios_icon_name="mappin"
+                        android_material_icon_name="place"
+                        size={16}
+                        color={hexToRgba(colors.text, 0.6)}
+                      />
+                      <Text style={styles.eventDetailText}>{event.venue}</Text>
                     </View>
                   </View>
-
-                  {event.location && (
-                    <View style={styles.locationContainer}>
-                      <IconSymbol name="map-pin" size={16} color={colors.accent} />
-                      <Text style={styles.locationText}>{event.location}</Text>
-                    </View>
-                  )}
                 </View>
               </View>
             ))}
-          </>
+          </View>
+        )}
+
+        {events.length === 0 && (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="event"
+              size={64}
+              color={hexToRgba(colors.text, 0.3)}
+            />
+            <Text style={styles.emptyStateText}>No events scheduled</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Events will appear here when you create them in the calendar
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -222,145 +304,143 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    padding: 20,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  roleIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  roleText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 4,
-  },
-  scheduleContainer: {
-    flex: 1,
-    padding: 20,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyMessage: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  summaryCard: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.card,
-    marginBottom: 4,
-  },
-  summaryCount: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.card,
-  },
-  eventCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.textSecondary + '20',
-  },
-  eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: hexToRgba(colors.text, 0.1),
   },
-  eventDateInfo: {
-    flex: 1,
-  },
-  eventDate: {
-    fontSize: 16,
-    fontWeight: '600',
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
     color: colors.text,
   },
-  eventCountdown: {
-    fontSize: 12,
-    color: colors.primary,
-    marginTop: 2,
-    fontWeight: '500',
+  content: {
+    flex: 1,
   },
-  eventStatus: {
-    padding: 4,
+  section: {
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  eventCard: {
+    flexDirection: 'row',
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: hexToRgba(colors.primary, 0.2),
+  },
+  pastEventCard: {
+    borderColor: hexToRgba(colors.text, 0.1),
+    opacity: 0.7,
+  },
+  eventDateBadge: {
+    backgroundColor: colors.primary,
+    width: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  pastEventDateBadge: {
+    backgroundColor: hexToRgba(colors.text, 0.3),
+  },
+  eventDateBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   eventContent: {
-    gap: 8,
+    flex: 1,
+    padding: 16,
   },
   eventTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 4,
   },
-  eventVenue: {
+  eventDate: {
     fontSize: 14,
+    color: hexToRgba(colors.text, 0.6),
+    marginBottom: 12,
+  },
+  todayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ff5722',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  todayBadgeText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  tomorrowBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  tomorrowBadgeText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  daysUntil: {
+    fontSize: 12,
     color: colors.primary,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginBottom: 12,
   },
   eventDetails: {
-    gap: 6,
-    marginTop: 8,
+    gap: 8,
   },
   eventDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   eventDetailText: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginLeft: 8,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-  },
-  locationText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 8,
+    color: hexToRgba(colors.text, 0.8),
     flex: 1,
-    lineHeight: 16,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: hexToRgba(colors.text, 0.5),
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 40,
   },
 });

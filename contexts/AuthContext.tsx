@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/app/integrations/supabase/client';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 export type UserRole = 'manager' | 'supervisor';
 
@@ -18,53 +19,79 @@ interface AuthContextType {
   logout: () => Promise<void>;
   isManager: () => boolean;
   isSupervisor: () => boolean;
+  session: Session | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demonstration - in a real app, this would come from a backend
-const MOCK_USERS: { [key: string]: { password: string; user: User } } = {
-  'mtsand09@gmail.com': {
-    password: 'Olive$22',
-    user: {
-      id: '1',
-      email: 'mtsand09@gmail.com',
-      role: 'manager',
-      name: 'Manager User',
-    },
-  },
-  'sisandamhlongo28@gmail.com': {
-    password: 'Sandikens$$',
-    user: {
-      id: '2',
-      email: 'sisandamhlongo28@gmail.com',
-      role: 'supervisor',
-      name: 'Supervisor User',
-    },
-  },
-};
-
-const AUTH_STORAGE_KEY = '@auth_user';
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadStoredUser();
+    console.log('Initializing auth...');
+    
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session ? 'Found' : 'None');
+      setSession(session);
+      if (session?.user) {
+        loadUserProfile(session.user);
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('Auth state changed:', _event, session ? 'Session exists' : 'No session');
+      setSession(session);
+      if (session?.user) {
+        loadUserProfile(session.user);
+      } else {
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const loadStoredUser = async () => {
+  const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
-      console.log('Loading stored user...');
-      const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        console.log('Found stored user:', parsedUser.email, parsedUser.role);
-        setUser(parsedUser);
+      console.log('Loading user profile for:', supabaseUser.email);
+      
+      // Fetch user profile from users table
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', supabaseUser.email)
+        .single();
+
+      if (error) {
+        console.error('Error loading user profile:', error);
+        // If user doesn't exist in users table, create a default profile
+        const newUser: User = {
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          role: 'supervisor', // Default role
+          name: supabaseUser.email?.split('@')[0] || 'User',
+        };
+        setUser(newUser);
+      } else if (data) {
+        console.log('User profile loaded:', data.email, data.role);
+        setUser({
+          id: data.id,
+          email: data.email,
+          role: data.role as UserRole,
+          name: data.name,
+        });
       }
     } catch (error) {
-      console.error('Error loading stored user:', error);
+      console.error('Error in loadUserProfile:', error);
     } finally {
       setIsLoading(false);
     }
@@ -74,22 +101,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('Attempting login for:', email);
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser = MOCK_USERS[email.toLowerCase()];
-      
-      if (mockUser && mockUser.password === password) {
-        console.log('Login successful for:', email, 'Role:', mockUser.user.role);
-        setUser(mockUser.user);
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockUser.user));
-        return true;
-      } else {
-        console.log('Login failed for:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('Login error:', error.message);
         return false;
       }
+
+      if (data.user) {
+        console.log('Login successful for:', email);
+        return true;
+      }
+
+      return false;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login exception:', error);
       return false;
     }
   };
@@ -97,10 +126,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       console.log('Logging out user:', user?.email);
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Logout error:', error);
+      }
       setUser(null);
-      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+      setSession(null);
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Logout exception:', error);
     }
   };
 
@@ -114,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     isManager,
     isSupervisor,
+    session,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

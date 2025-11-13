@@ -1,6 +1,7 @@
 
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
 import {
   View,
   Text,
@@ -12,12 +13,11 @@ import {
   FlatList,
   TextInput,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import RoleGuard from '@/components/RoleGuard';
+import { colors } from '@/styles/commonStyles';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface PaymentData {
   id: string;
@@ -39,15 +39,27 @@ const hexToRgba = (hex: string, alpha: number) => {
 };
 
 export default function PaymentsScreen() {
-  const { user, isManager } = useAuth();
+  const { user } = useAuth();
   const [payments, setPayments] = useState<PaymentData[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedView, setSelectedView] = useState<'all' | 'summary'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
 
   useEffect(() => {
     loadPayments();
+    
+    // Subscribe to real-time changes
+    const subscription = supabase
+      .channel('payments_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        console.log('Payments changed, reloading...');
+        loadPayments();
+      })
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -56,33 +68,53 @@ export default function PaymentsScreen() {
 
   const loadPayments = async () => {
     try {
-      console.log('Loading payments from storage...');
-      const storedPayments = await AsyncStorage.getItem('@payments');
-      if (storedPayments) {
-        const parsedPayments = JSON.parse(storedPayments);
-        console.log('Loaded payments:', parsedPayments.length);
-        setPayments(parsedPayments);
+      console.log('Loading payments from Supabase...');
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.error('Error loading payments:', error);
+        return;
+      }
+
+      if (data) {
+        console.log('Loaded payments:', data.length);
+        const paymentsData: PaymentData[] = data.map((payment) => ({
+          id: payment.id,
+          eventId: payment.event_id || '',
+          promoters: payment.promoters,
+          event: payment.event,
+          date: payment.date,
+          hours: payment.hours,
+          rate: payment.rate,
+          totalAmount: payment.total_amount,
+          paid: payment.paid,
+        }));
+        setPayments(paymentsData);
       }
     } catch (error) {
-      console.error('Error loading payments:', error);
+      console.error('Error in loadPayments:', error);
     }
   };
 
   const filterPayments = () => {
     let filtered = [...payments];
 
-    // Apply status filter
+    // Filter by status
     if (filterStatus === 'paid') {
-      filtered = filtered.filter(payment => payment.paid);
+      filtered = filtered.filter((p) => p.paid);
     } else if (filterStatus === 'unpaid') {
-      filtered = filtered.filter(payment => !payment.paid);
+      filtered = filtered.filter((p) => !p.paid);
     }
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(payment =>
-        payment.promoters.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        payment.event.toLowerCase().includes(searchQuery.toLowerCase())
+    // Filter by search query
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (p) =>
+          p.promoters.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.event.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -90,164 +122,176 @@ export default function PaymentsScreen() {
   };
 
   const markAsPaid = async (paymentId: string) => {
-    if (!isManager()) {
-      Alert.alert('Access Denied', 'Only managers can mark payments as paid.');
-      return;
-    }
-
     try {
       console.log('Marking payment as paid:', paymentId);
-      const updatedPayments = payments.map(payment =>
-        payment.id === paymentId ? { ...payment, paid: true } : payment
-      );
-      
-      setPayments(updatedPayments);
-      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
-      
-      Alert.alert('Success', 'Payment marked as paid!');
+      const { error } = await supabase
+        .from('payments')
+        .update({ paid: true, updated_at: new Date().toISOString() })
+        .eq('id', paymentId);
+
+      if (error) {
+        console.error('Error marking payment as paid:', error);
+        Alert.alert('Error', 'Failed to update payment status');
+        return;
+      }
+
+      await loadPayments();
     } catch (error) {
-      console.error('Error updating payment:', error);
+      console.error('Error in markAsPaid:', error);
       Alert.alert('Error', 'Failed to update payment status');
     }
   };
 
   const markAsUnpaid = async (paymentId: string) => {
-    if (!isManager()) {
-      Alert.alert('Access Denied', 'Only managers can mark payments as unpaid.');
-      return;
-    }
-
     try {
       console.log('Marking payment as unpaid:', paymentId);
-      const updatedPayments = payments.map(payment =>
-        payment.id === paymentId ? { ...payment, paid: false } : payment
-      );
-      
-      setPayments(updatedPayments);
-      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
-      
-      Alert.alert('Success', 'Payment marked as unpaid!');
+      const { error } = await supabase
+        .from('payments')
+        .update({ paid: false, updated_at: new Date().toISOString() })
+        .eq('id', paymentId);
+
+      if (error) {
+        console.error('Error marking payment as unpaid:', error);
+        Alert.alert('Error', 'Failed to update payment status');
+        return;
+      }
+
+      await loadPayments();
     } catch (error) {
-      console.error('Error updating payment:', error);
+      console.error('Error in markAsUnpaid:', error);
       Alert.alert('Error', 'Failed to update payment status');
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    };
+    return date.toLocaleDateString('en-US', options);
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number): string => {
     return `R${amount.toFixed(2)}`;
   };
 
   const calculateTotals = () => {
-    const displayPayments = filteredPayments;
-    const totalAmount = displayPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
-    const paidAmount = displayPayments.reduce((sum, payment) => 
-      payment.paid ? sum + payment.totalAmount : sum, 0
-    );
-    const unpaidAmount = totalAmount - paidAmount;
-    
-    return { totalAmount, paidAmount, unpaidAmount };
+    const total = filteredPayments.reduce((sum, p) => sum + p.totalAmount, 0);
+    const paid = filteredPayments
+      .filter((p) => p.paid)
+      .reduce((sum, p) => sum + p.totalAmount, 0);
+    const unpaid = filteredPayments
+      .filter((p) => !p.paid)
+      .reduce((sum, p) => sum + p.totalAmount, 0);
+
+    return { total, paid, unpaid };
   };
 
   const getPromoterPaymentSummary = () => {
-    const displayPayments = filteredPayments;
-    const promoterSummary: { [key: string]: { total: number; paid: number; unpaid: number; events: number } } = {};
-    
-    displayPayments.forEach(payment => {
-      if (!promoterSummary[payment.promoters]) {
-        promoterSummary[payment.promoters] = { total: 0, paid: 0, unpaid: 0, events: 0 };
+    const summary: { [key: string]: { total: number; paid: number; unpaid: number } } = {};
+
+    filteredPayments.forEach((payment) => {
+      if (!summary[payment.promoters]) {
+        summary[payment.promoters] = { total: 0, paid: 0, unpaid: 0 };
       }
-      
-      promoterSummary[payment.promoters].total += payment.totalAmount;
-      promoterSummary[payment.promoters].events += 1;
-      
+      summary[payment.promoters].total += payment.totalAmount;
       if (payment.paid) {
-        promoterSummary[payment.promoters].paid += payment.totalAmount;
+        summary[payment.promoters].paid += payment.totalAmount;
       } else {
-        promoterSummary[payment.promoters].unpaid += payment.totalAmount;
+        summary[payment.promoters].unpaid += payment.totalAmount;
       }
     });
-    
-    return Object.entries(promoterSummary).map(([name, data]) => ({
+
+    return Object.entries(summary).map(([name, amounts]) => ({
       name,
-      ...data,
+      ...amounts,
     }));
   };
 
   const renderPaymentCard = ({ item }: { item: PaymentData }) => (
-    <View style={styles.paymentCard}>
+    <View style={[styles.paymentCard, item.paid && styles.paymentCardPaid]}>
       <View style={styles.paymentHeader}>
-        <View style={styles.paymentInfo}>
+        <View style={styles.paymentHeaderLeft}>
           <Text style={styles.promoterName}>{item.promoters}</Text>
-          <Text style={styles.eventName}>{item.event}</Text>
-          <Text style={styles.eventDate}>{formatDate(item.date)}</Text>
+          {item.paid && (
+            <View style={styles.paidBadge}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={16}
+                color="#4CAF50"
+              />
+              <Text style={styles.paidText}>Paid</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.paymentAmount}>
-          <Text style={styles.amountText}>{formatCurrency(item.totalAmount)}</Text>
-          <Text style={styles.hoursText}>{item.hours}h × R{item.rate}</Text>
-        </View>
+        <Text style={styles.paymentAmount}>{formatCurrency(item.totalAmount)}</Text>
       </View>
-      
-      <View style={styles.paymentFooter}>
-        <View style={[styles.statusBadge, item.paid ? styles.paidBadge : styles.unpaidBadge]}>
-          <IconSymbol 
-            name={item.paid ? "check-circle" : "clock"} 
-            size={16} 
-            color={item.paid ? colors.card : colors.secondary} 
-          />
-          <Text style={[styles.statusText, item.paid ? styles.paidText : styles.unpaidText]}>
-            {item.paid ? 'Paid' : 'Unpaid'}
-          </Text>
-        </View>
-        
-        <RoleGuard allowedRoles={['manager']} showMessage={false}>
+
+      <Text style={styles.eventName}>{item.event}</Text>
+      <Text style={styles.paymentDate}>{formatDate(item.date)}</Text>
+
+      <View style={styles.paymentDetails}>
+        <Text style={styles.paymentDetail}>
+          {item.hours} hours × {formatCurrency(item.rate)}/hr
+        </Text>
+      </View>
+
+      <RoleGuard allowedRoles={['manager']}>
+        <View style={styles.paymentActions}>
           {!item.paid ? (
             <TouchableOpacity
-              style={styles.payButton}
+              style={[styles.actionButton, styles.actionButtonPrimary]}
               onPress={() => markAsPaid(item.id)}
             >
-              <Text style={styles.payButtonText}>Mark as Paid</Text>
+              <IconSymbol
+                ios_icon_name="checkmark.circle"
+                android_material_icon_name="check_circle"
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.actionButtonTextPrimary}>Mark as Paid</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={styles.unpayButton}
+              style={styles.actionButton}
               onPress={() => markAsUnpaid(item.id)}
             >
-              <Text style={styles.unpayButtonText}>Mark as Unpaid</Text>
+              <IconSymbol
+                ios_icon_name="arrow.uturn.backward"
+                android_material_icon_name="undo"
+                size={20}
+                color={colors.text}
+              />
+              <Text style={styles.actionButtonText}>Mark as Unpaid</Text>
             </TouchableOpacity>
           )}
-        </RoleGuard>
-      </View>
+        </View>
+      </RoleGuard>
     </View>
   );
 
   const renderPromoterSummaryCard = ({ item }: { item: any }) => (
     <View style={styles.summaryCard}>
-      <View style={styles.summaryHeader}>
-        <Text style={styles.summaryName}>{item.name}</Text>
-        <Text style={styles.summaryTotal}>{formatCurrency(item.total)}</Text>
-      </View>
-      
+      <Text style={styles.summaryName}>{item.name}</Text>
       <View style={styles.summaryDetails}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Events:</Text>
-          <Text style={styles.summaryValue}>{item.events}</Text>
+          <Text style={styles.summaryLabel}>Total:</Text>
+          <Text style={styles.summaryValue}>{formatCurrency(item.total)}</Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Paid:</Text>
-          <Text style={[styles.summaryValue, styles.paidAmount]}>{formatCurrency(item.paid)}</Text>
+          <Text style={[styles.summaryLabel, styles.summaryLabelPaid]}>Paid:</Text>
+          <Text style={[styles.summaryValue, styles.summaryValuePaid]}>
+            {formatCurrency(item.paid)}
+          </Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Unpaid:</Text>
-          <Text style={[styles.summaryValue, styles.unpaidAmount]}>{formatCurrency(item.unpaid)}</Text>
+          <Text style={[styles.summaryLabel, styles.summaryLabelUnpaid]}>Unpaid:</Text>
+          <Text style={[styles.summaryValue, styles.summaryValueUnpaid]}>
+            {formatCurrency(item.unpaid)}
+          </Text>
         </View>
       </View>
     </View>
@@ -257,90 +301,72 @@ export default function PaymentsScreen() {
   const promoterSummary = getPromoterPaymentSummary();
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen 
-        options={{ 
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Stack.Screen
+        options={{
           title: 'Payments',
-          headerShown: true,
-          headerStyle: { backgroundColor: colors.card },
-          headerTitleStyle: { color: colors.text },
-        }} 
+          headerShown: false,
+        }}
       />
       
       <View style={styles.header}>
-        <Text style={styles.title}>Payment Management</Text>
-        <View style={styles.roleIndicator}>
-          <IconSymbol 
-            name={isManager() ? "crown" : "eye"} 
-            size={16} 
-            color={isManager() ? colors.primary : colors.accent} 
-          />
-          <Text style={styles.roleText}>
-            {isManager() ? 'Manager - Can Edit' : 'Supervisor - View Only'}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Payments</Text>
       </View>
 
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <IconSymbol name="magnifying-glass" size={20} color={colors.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name or event..."
-            placeholderTextColor={colors.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <IconSymbol name="xmark" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <IconSymbol
+          ios_icon_name="magnifyingglass"
+          android_material_icon_name="search"
+          size={20}
+          color={hexToRgba(colors.text, 0.5)}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by promoter or event..."
+          placeholderTextColor={hexToRgba(colors.text, 0.5)}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
       </View>
 
       <View style={styles.filterContainer}>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'all' && styles.activeFilter]}
+          style={[styles.filterButton, filterStatus === 'all' && styles.filterButtonActive]}
           onPress={() => setFilterStatus('all')}
         >
-          <Text style={[styles.filterText, filterStatus === 'all' && styles.activeFilterText]}>
+          <Text
+            style={[
+              styles.filterButtonText,
+              filterStatus === 'all' && styles.filterButtonTextActive,
+            ]}
+          >
             All
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'unpaid' && styles.activeFilter]}
+          style={[styles.filterButton, filterStatus === 'unpaid' && styles.filterButtonActive]}
           onPress={() => setFilterStatus('unpaid')}
         >
-          <Text style={[styles.filterText, filterStatus === 'unpaid' && styles.activeFilterText]}>
+          <Text
+            style={[
+              styles.filterButtonText,
+              filterStatus === 'unpaid' && styles.filterButtonTextActive,
+            ]}
+          >
             Unpaid
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'paid' && styles.activeFilter]}
+          style={[styles.filterButton, filterStatus === 'paid' && styles.filterButtonActive]}
           onPress={() => setFilterStatus('paid')}
         >
-          <Text style={[styles.filterText, filterStatus === 'paid' && styles.activeFilterText]}>
+          <Text
+            style={[
+              styles.filterButtonText,
+              filterStatus === 'paid' && styles.filterButtonTextActive,
+            ]}
+          >
             Paid
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.viewToggle}>
-        <TouchableOpacity
-          style={[styles.toggleButton, selectedView === 'all' && styles.activeToggle]}
-          onPress={() => setSelectedView('all')}
-        >
-          <Text style={[styles.toggleText, selectedView === 'all' && styles.activeToggleText]}>
-            All Payments
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleButton, selectedView === 'summary' && styles.activeToggle]}
-          onPress={() => setSelectedView('summary')}
-        >
-          <Text style={[styles.toggleText, selectedView === 'summary' && styles.activeToggleText]}>
-            By Promoter
           </Text>
         </TouchableOpacity>
       </View>
@@ -348,44 +374,62 @@ export default function PaymentsScreen() {
       <View style={styles.totalsContainer}>
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalAmount}>{formatCurrency(totals.totalAmount)}</Text>
+          <Text style={styles.totalValue}>{formatCurrency(totals.total)}</Text>
         </View>
-        <View style={styles.totalCard}>
+        <View style={[styles.totalCard, styles.totalCardPaid]}>
           <Text style={styles.totalLabel}>Paid</Text>
-          <Text style={[styles.totalAmount, styles.paidAmount]}>{formatCurrency(totals.paidAmount)}</Text>
+          <Text style={[styles.totalValue, styles.totalValuePaid]}>
+            {formatCurrency(totals.paid)}
+          </Text>
         </View>
-        <View style={styles.totalCard}>
+        <View style={[styles.totalCard, styles.totalCardUnpaid]}>
           <Text style={styles.totalLabel}>Unpaid</Text>
-          <Text style={[styles.totalAmount, styles.unpaidAmount]}>{formatCurrency(totals.unpaidAmount)}</Text>
+          <Text style={[styles.totalValue, styles.totalValueUnpaid]}>
+            {formatCurrency(totals.unpaid)}
+          </Text>
         </View>
       </View>
 
-      {searchQuery.length > 0 && (
-        <View style={styles.searchResults}>
-          <Text style={styles.searchResultsText}>
-            {filteredPayments.length} result{filteredPayments.length !== 1 ? 's' : ''} for "{searchQuery}"
-          </Text>
+      {promoterSummary.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Promoter Summary</Text>
+          <FlatList
+            data={promoterSummary}
+            renderItem={renderPromoterSummaryCard}
+            keyExtractor={(item) => item.name}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.summaryList}
+          />
         </View>
       )}
 
-      <FlatList
-        data={selectedView === 'all' ? filteredPayments : promoterSummary}
-        renderItem={selectedView === 'all' ? renderPaymentCard : renderPromoterSummaryCard}
-        keyExtractor={(item, index) => selectedView === 'all' ? (item as PaymentData).id : `summary_${index}`}
-        style={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <IconSymbol name="creditcard" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No Payments Found</Text>
-            <Text style={styles.emptyMessage}>
-              {searchQuery || filterStatus !== 'all' 
-                ? 'Try adjusting your filters or search terms' 
-                : 'Payments will appear here when events are created'}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Payment Details</Text>
+        {filteredPayments.length > 0 ? (
+          <FlatList
+            data={filteredPayments}
+            renderItem={renderPaymentCard}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.paymentsList}
+          />
+        ) : (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="banknote"
+              android_material_icon_name="payments"
+              size={64}
+              color={hexToRgba(colors.text, 0.3)}
+            />
+            <Text style={styles.emptyStateText}>No payments found</Text>
+            <Text style={styles.emptyStateSubtext}>
+              {searchQuery || filterStatus !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Payments will appear here when you create events'}
             </Text>
           </View>
-        }
-      />
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -396,266 +440,126 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    padding: 20,
-    backgroundColor: colors.card,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
+    borderBottomColor: hexToRgba(colors.text, 0.1),
   },
-  title: {
-    fontSize: 24,
+  headerTitle: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
-    textAlign: 'center',
-  },
-  roleIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  roleText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginLeft: 4,
   },
   searchContainer: {
-    padding: 20,
-    paddingBottom: 12,
-    backgroundColor: colors.card,
-  },
-  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    marginHorizontal: 20,
+    marginTop: 16,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
-    marginLeft: 12,
   },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: colors.card,
+    paddingVertical: 12,
     gap: 8,
   },
   filterButton: {
-    flex: 1,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.background,
-    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    borderWidth: 1,
+    borderColor: hexToRgba(colors.text, 0.1),
   },
-  activeFilter: {
-    backgroundColor: colors.accent,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  activeFilterText: {
-    color: colors.card,
-  },
-  viewToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    marginHorizontal: 4,
-    borderRadius: 8,
-  },
-  activeToggle: {
+  filterButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  toggleText: {
+  filterButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: colors.text,
   },
-  activeToggleText: {
-    color: colors.card,
+  filterButtonTextActive: {
+    color: '#fff',
   },
   totalsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
+    gap: 12,
+    marginBottom: 16,
   },
   totalCard: {
     flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  totalCardPaid: {
+    borderColor: hexToRgba('#4CAF50', 0.3),
+  },
+  totalCardUnpaid: {
+    borderColor: hexToRgba('#ff9800', 0.3),
   },
   totalLabel: {
     fontSize: 12,
-    color: colors.textSecondary,
+    color: hexToRgba(colors.text, 0.6),
     marginBottom: 4,
   },
-  totalAmount: {
-    fontSize: 16,
-    fontWeight: '600',
+  totalValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
     color: colors.text,
   },
-  paidAmount: {
-    color: colors.primary,
+  totalValuePaid: {
+    color: '#4CAF50',
   },
-  unpaidAmount: {
-    color: colors.secondary,
+  totalValueUnpaid: {
+    color: '#ff9800',
   },
-  searchResults: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: colors.highlight + '20',
-  },
-  searchResultsText: {
-    fontSize: 14,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  list: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  paymentCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 6,
-    borderWidth: 1,
-    borderColor: colors.textSecondary + '20',
-  },
-  paymentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  paymentInfo: {
+  section: {
     flex: 1,
   },
-  promoterName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  eventName: {
-    fontSize: 14,
-    color: colors.primary,
-    marginTop: 2,
-  },
-  eventDate: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  paymentAmount: {
-    alignItems: 'flex-end',
-  },
-  amountText: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
-  hoursText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  paymentFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  paidBadge: {
-    backgroundColor: colors.primary,
-  },
-  unpaidBadge: {
-    backgroundColor: colors.secondary + '20',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  paidText: {
-    color: colors.card,
-  },
-  unpaidText: {
-    color: colors.secondary,
-  },
-  payButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  payButtonText: {
-    color: colors.card,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  unpayButton: {
-    backgroundColor: colors.secondary + '20',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.secondary,
-  },
-  unpayButtonText: {
-    color: colors.secondary,
-    fontSize: 12,
-    fontWeight: '600',
+  summaryList: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   summaryCard: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
+    backgroundColor: hexToRgba(colors.text, 0.05),
     padding: 16,
-    marginVertical: 6,
-    borderWidth: 1,
-    borderColor: colors.textSecondary + '20',
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    borderRadius: 12,
+    marginRight: 12,
+    minWidth: 200,
   },
   summaryName: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-  },
-  summaryTotal: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
+    marginBottom: 12,
   },
   summaryDetails: {
-    gap: 4,
+    gap: 8,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -664,31 +568,139 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: hexToRgba(colors.text, 0.6),
+  },
+  summaryLabelPaid: {
+    color: '#4CAF50',
+  },
+  summaryLabelUnpaid: {
+    color: '#ff9800',
   },
   summaryValue: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.text,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  summaryValuePaid: {
+    color: '#4CAF50',
+  },
+  summaryValueUnpaid: {
+    color: '#ff9800',
+  },
+  paymentsList: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  paymentCard: {
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  paymentCardPaid: {
+    borderColor: hexToRgba('#4CAF50', 0.3),
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
+  },
+  paymentHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  promoterName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  paidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: hexToRgba('#4CAF50', 0.1),
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  paidText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  paymentAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  eventName: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  paymentDate: {
+    fontSize: 12,
+    color: hexToRgba(colors.text, 0.6),
+    marginBottom: 8,
+  },
+  paymentDetails: {
+    marginBottom: 12,
+  },
+  paymentDetail: {
+    fontSize: 12,
+    color: hexToRgba(colors.text, 0.6),
+  },
+  paymentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: hexToRgba(colors.text, 0.05),
+    borderWidth: 1,
+    borderColor: hexToRgba(colors.text, 0.1),
+  },
+  actionButtonPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  actionButtonTextPrimary: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 60,
   },
-  emptyTitle: {
-    fontSize: 18,
+  emptyStateText: {
+    fontSize: 20,
     fontWeight: '600',
     color: colors.text,
     marginTop: 16,
-    marginBottom: 8,
   },
-  emptyMessage: {
+  emptyStateSubtext: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: hexToRgba(colors.text, 0.5),
+    marginTop: 8,
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 40,
   },
 });

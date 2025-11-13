@@ -1,3 +1,4 @@
+
 export type Json =
   | string
   | number
@@ -9,40 +10,148 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      brand_briefs: {
+      users: {
         Row: {
           id: string
-          brand_name: string
-          brief_title: string
-          brief_content: string | null
-          file_url: string | null
-          file_name: string | null
-          file_type: string | null
-          created_by: string
+          email: string
+          name: string
+          role: string
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          brand_name: string
-          brief_title: string
-          brief_content?: string | null
-          file_url?: string | null
-          file_name?: string | null
-          file_type?: string | null
-          created_by: string
+          email: string
+          name: string
+          role: string
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
-          brand_name?: string
-          brief_title?: string
-          brief_content?: string | null
-          file_url?: string | null
-          file_name?: string | null
-          file_type?: string | null
-          created_by?: string
+          email?: string
+          name?: string
+          role?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      events: {
+        Row: {
+          id: string
+          date: string
+          promoters: string
+          venue: string
+          location: string
+          event: string
+          arrival_time: string
+          duration: string
+          rate: string
+          brands: string
+          mechanic: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          date: string
+          promoters: string
+          venue: string
+          location: string
+          event: string
+          arrival_time: string
+          duration: string
+          rate: string
+          brands: string
+          mechanic: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          date?: string
+          promoters?: string
+          venue?: string
+          location?: string
+          event?: string
+          arrival_time?: string
+          duration?: string
+          rate?: string
+          brands?: string
+          mechanic?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      messages: {
+        Row: {
+          id: string
+          event_id: string | null
+          message: string
+          date: string
+          sent: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          event_id?: string | null
+          message: string
+          date: string
+          sent?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          event_id?: string | null
+          message?: string
+          date?: string
+          sent?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      payments: {
+        Row: {
+          id: string
+          event_id: string | null
+          promoters: string
+          event: string
+          date: string
+          hours: number
+          rate: number
+          total_amount: number
+          paid: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          event_id?: string | null
+          promoters: string
+          event: string
+          date: string
+          hours: number
+          rate: number
+          total_amount: number
+          paid?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          event_id?: string | null
+          promoters?: string
+          event?: string
+          date?: string
+          hours?: number
+          rate?: number
+          total_amount?: number
+          paid?: boolean
           created_at?: string
           updated_at?: string
         }
