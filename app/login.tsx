@@ -49,11 +49,11 @@ export default function LoginScreen() {
 
   const fillDemoCredentials = (role: 'manager' | 'supervisor') => {
     if (role === 'manager') {
-      setEmail('mtsand09@gmail.com');
-      setPassword('Olive$22');
+      setEmail('Mtsand09@gmail.com');
+      setPassword('Olive@22!');
     } else {
-      setEmail('Sisandamhlongo28@gmail.com');
-      setPassword('Sandikens$$');
+      setEmail('sisandamhlongo28@gmail.com');
+      setPassword('Sands#28!');
     }
   };
 
