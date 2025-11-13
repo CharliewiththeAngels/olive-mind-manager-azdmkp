@@ -113,22 +113,6 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
           </View>
-
-          <View style={styles.infoSection}>
-            <Text style={styles.infoTitle}>Login Credentials</Text>
-            <View style={styles.infoBox}>
-              <View style={styles.accountInfo}>
-                <Text style={styles.accountLabel}>Manager Account:</Text>
-                <Text style={styles.accountEmail}>Mtsand09@gmail.com</Text>
-                <Text style={styles.accountPassword}>Password: Olive@22!</Text>
-              </View>
-              <View style={styles.accountInfo}>
-                <Text style={styles.accountLabel}>Supervisor Account:</Text>
-                <Text style={styles.accountEmail}>sisandamhlongo28@gmail.com</Text>
-                <Text style={styles.accountPassword}>Password: Sands#28!</Text>
-              </View>
-            </View>
-          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -202,40 +186,5 @@ const styles = StyleSheet.create({
     color: colors.card,
     fontSize: 16,
     fontWeight: '600',
-  },
-  infoSection: {
-    alignItems: 'center',
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  infoBox: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 20,
-    width: '100%',
-    borderWidth: 1,
-    borderColor: colors.textSecondary + '20',
-  },
-  accountInfo: {
-    marginBottom: 20,
-  },
-  accountLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  accountEmail: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  accountPassword: {
-    fontSize: 14,
-    color: colors.textSecondary,
   },
 });
