@@ -44,6 +44,7 @@ export default function PaymentsScreen() {
   const [filteredPayments, setFilteredPayments] = useState<PaymentData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<'all' | 'summary'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
 
   useEffect(() => {
     loadPayments();
@@ -51,7 +52,7 @@ export default function PaymentsScreen() {
 
   useEffect(() => {
     filterPayments();
-  }, [payments, searchQuery]);
+  }, [payments, searchQuery, filterStatus]);
 
   const loadPayments = async () => {
     try {
@@ -68,15 +69,23 @@ export default function PaymentsScreen() {
   };
 
   const filterPayments = () => {
-    if (!searchQuery.trim()) {
-      setFilteredPayments(payments);
-      return;
+    let filtered = [...payments];
+
+    // Apply status filter
+    if (filterStatus === 'paid') {
+      filtered = filtered.filter(payment => payment.paid);
+    } else if (filterStatus === 'unpaid') {
+      filtered = filtered.filter(payment => !payment.paid);
     }
 
-    const filtered = payments.filter(payment =>
-      payment.promoters.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      payment.event.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Apply search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(payment =>
+        payment.promoters.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        payment.event.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
     setFilteredPayments(filtered);
   };
 
@@ -102,6 +111,28 @@ export default function PaymentsScreen() {
     }
   };
 
+  const markAsUnpaid = async (paymentId: string) => {
+    if (!isManager()) {
+      Alert.alert('Access Denied', 'Only managers can mark payments as unpaid.');
+      return;
+    }
+
+    try {
+      console.log('Marking payment as unpaid:', paymentId);
+      const updatedPayments = payments.map(payment =>
+        payment.id === paymentId ? { ...payment, paid: false } : payment
+      );
+      
+      setPayments(updatedPayments);
+      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
+      
+      Alert.alert('Success', 'Payment marked as unpaid!');
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      Alert.alert('Error', 'Failed to update payment status');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -116,7 +147,7 @@ export default function PaymentsScreen() {
   };
 
   const calculateTotals = () => {
-    const displayPayments = searchQuery ? filteredPayments : payments;
+    const displayPayments = filteredPayments;
     const totalAmount = displayPayments.reduce((sum, payment) => sum + payment.totalAmount, 0);
     const paidAmount = displayPayments.reduce((sum, payment) => 
       payment.paid ? sum + payment.totalAmount : sum, 0
@@ -127,7 +158,7 @@ export default function PaymentsScreen() {
   };
 
   const getPromoterPaymentSummary = () => {
-    const displayPayments = searchQuery ? filteredPayments : payments;
+    const displayPayments = filteredPayments;
     const promoterSummary: { [key: string]: { total: number; paid: number; unpaid: number; events: number } } = {};
     
     displayPayments.forEach(payment => {
@@ -178,12 +209,19 @@ export default function PaymentsScreen() {
         </View>
         
         <RoleGuard allowedRoles={['manager']} showMessage={false}>
-          {!item.paid && (
+          {!item.paid ? (
             <TouchableOpacity
               style={styles.payButton}
               onPress={() => markAsPaid(item.id)}
             >
               <Text style={styles.payButtonText}>Mark as Paid</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.unpayButton}
+              onPress={() => markAsUnpaid(item.id)}
+            >
+              <Text style={styles.unpayButtonText}>Mark as Unpaid</Text>
             </TouchableOpacity>
           )}
         </RoleGuard>
@@ -249,6 +287,7 @@ export default function PaymentsScreen() {
           <TextInput
             style={styles.searchInput}
             placeholder="Search by name or event..."
+            placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -258,6 +297,33 @@ export default function PaymentsScreen() {
             </TouchableOpacity>
           )}
         </View>
+      </View>
+
+      <View style={styles.filterContainer}>
+        <TouchableOpacity
+          style={[styles.filterButton, filterStatus === 'all' && styles.activeFilter]}
+          onPress={() => setFilterStatus('all')}
+        >
+          <Text style={[styles.filterText, filterStatus === 'all' && styles.activeFilterText]}>
+            All
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterButton, filterStatus === 'unpaid' && styles.activeFilter]}
+          onPress={() => setFilterStatus('unpaid')}
+        >
+          <Text style={[styles.filterText, filterStatus === 'unpaid' && styles.activeFilterText]}>
+            Unpaid
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterButton, filterStatus === 'paid' && styles.activeFilter]}
+          onPress={() => setFilterStatus('paid')}
+        >
+          <Text style={[styles.filterText, filterStatus === 'paid' && styles.activeFilterText]}>
+            Paid
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.viewToggle}>
@@ -313,7 +379,9 @@ export default function PaymentsScreen() {
             <IconSymbol name="creditcard" size={48} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>No Payments Found</Text>
             <Text style={styles.emptyMessage}>
-              {searchQuery ? 'Try adjusting your search terms' : 'Payments will appear here when events are created'}
+              {searchQuery || filterStatus !== 'all' 
+                ? 'Try adjusting your filters or search terms' 
+                : 'Payments will appear here when events are created'}
             </Text>
           </View>
         }
@@ -352,9 +420,8 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     padding: 20,
+    paddingBottom: 12,
     backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.textSecondary + '20',
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -370,11 +437,39 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginLeft: 12,
   },
+  filterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: colors.card,
+    gap: 8,
+  },
+  filterButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+  },
+  activeFilter: {
+    backgroundColor: colors.accent,
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  activeFilterText: {
+    color: colors.card,
+  },
   viewToggle: {
     flexDirection: 'row',
     backgroundColor: colors.card,
     paddingHorizontal: 20,
     paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '20',
   },
   toggleButton: {
     flex: 1,
@@ -522,6 +617,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  unpayButton: {
+    backgroundColor: colors.secondary + '20',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+  },
+  unpayButtonText: {
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   summaryCard: {
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -581,5 +689,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
+    paddingHorizontal: 40,
   },
 });

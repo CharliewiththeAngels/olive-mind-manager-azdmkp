@@ -46,6 +46,7 @@ export default function CalendarScreen() {
   const [events, setEvents] = useState<{ [key: string]: EventData[] }>({});
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [showEventModal, setShowEventModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventData | null>(null);
   const [newEvent, setNewEvent] = useState<Partial<EventData>>({
     promoters: '',
     venue: '',
@@ -89,10 +90,46 @@ export default function CalendarScreen() {
   const onDayPress = (day: DateData) => {
     console.log('Day pressed:', day.dateString);
     setSelectedDate(day.dateString);
-    
-    if (isManager()) {
-      setShowEventModal(true);
+  };
+
+  const openCreateEventModal = () => {
+    if (!isManager()) {
+      Alert.alert('Access Denied', 'Only managers can create events.');
+      return;
     }
+    setEditingEvent(null);
+    setNewEvent({
+      promoters: '',
+      venue: '',
+      location: '',
+      event: '',
+      arrivalTime: '',
+      duration: '',
+      rate: '',
+      brands: '',
+      mechanic: '',
+    });
+    setShowEventModal(true);
+  };
+
+  const openEditEventModal = (event: EventData) => {
+    if (!isManager()) {
+      Alert.alert('Access Denied', 'Only managers can edit events.');
+      return;
+    }
+    setEditingEvent(event);
+    setNewEvent({
+      promoters: event.promoters,
+      venue: event.venue,
+      location: event.location,
+      event: event.event,
+      arrivalTime: event.arrivalTime,
+      duration: event.duration,
+      rate: event.rate,
+      brands: event.brands,
+      mechanic: event.mechanic,
+    });
+    setShowEventModal(true);
   };
 
   const createEvent = async () => {
@@ -128,21 +165,90 @@ export default function CalendarScreen() {
     await generateMessage(eventData);
     await createPaymentEntries(eventData);
 
-    // Reset form
-    setNewEvent({
-      promoters: '',
-      venue: '',
-      location: '',
-      event: '',
-      arrivalTime: '',
-      duration: '',
-      rate: '',
-      brands: '',
-      mechanic: '',
-    });
     setShowEventModal(false);
-    
     Alert.alert('Success', 'Event created successfully!');
+  };
+
+  const updateEvent = async () => {
+    if (!editingEvent || !newEvent.promoters || !newEvent.venue || !newEvent.event) {
+      Alert.alert('Error', 'Please fill in all required fields (Promoters, Venue, Event)');
+      return;
+    }
+
+    console.log('Updating event:', editingEvent.id);
+
+    const updatedEventData: EventData = {
+      ...editingEvent,
+      promoters: newEvent.promoters || '',
+      venue: newEvent.venue || '',
+      location: newEvent.location || '',
+      event: newEvent.event || '',
+      arrivalTime: newEvent.arrivalTime || '',
+      duration: newEvent.duration || '',
+      rate: newEvent.rate || '',
+      brands: newEvent.brands || '',
+      mechanic: newEvent.mechanic || '',
+    };
+
+    const updatedEvents = { ...events };
+    const dateEvents = updatedEvents[editingEvent.date] || [];
+    const eventIndex = dateEvents.findIndex(e => e.id === editingEvent.id);
+    
+    if (eventIndex !== -1) {
+      dateEvents[eventIndex] = updatedEventData;
+      updatedEvents[editingEvent.date] = dateEvents;
+      await saveEvents(updatedEvents);
+
+      // Update related message
+      await updateMessage(updatedEventData);
+      
+      // Update related payments
+      await updatePaymentEntries(updatedEventData);
+
+      setShowEventModal(false);
+      Alert.alert('Success', 'Event updated successfully!');
+    }
+  };
+
+  const deleteEvent = async (event: EventData) => {
+    if (!isManager()) {
+      Alert.alert('Access Denied', 'Only managers can delete events.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${event.event}"? This will also delete related messages and payments.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('Deleting event:', event.id);
+
+            const updatedEvents = { ...events };
+            const dateEvents = updatedEvents[event.date] || [];
+            updatedEvents[event.date] = dateEvents.filter(e => e.id !== event.id);
+            
+            // Remove date key if no events left
+            if (updatedEvents[event.date].length === 0) {
+              delete updatedEvents[event.date];
+            }
+
+            await saveEvents(updatedEvents);
+
+            // Delete related message
+            await deleteMessage(event.id);
+
+            // Delete related payments
+            await deletePaymentEntries(event.id);
+
+            Alert.alert('Success', 'Event deleted successfully!');
+          },
+        },
+      ]
+    );
   };
 
   const generateMessage = async (event: EventData) => {
@@ -198,6 +304,70 @@ Ensure that your work station at all times is clean and presentable. There is a 
     }
   };
 
+  const updateMessage = async (event: EventData) => {
+    try {
+      console.log('Updating message for event:', event.id);
+      
+      const message = `Good afternoon Miss ☀ Confirmation of work for Olive Mind Marketing
+
+Promoters: ${event.promoters}
+Venue: ${event.venue}
+Location: ${event.location}
+Event: ${event.event}
+Date: ${formatDate(event.date)}
+Arrival Time: ${event.arrivalTime}
+Duration: ${event.duration}
+Rate: R${event.rate} per hour
+Brands: ${event.brands}
+
+Mechanic: ${event.mechanic}
+
+1 hour prior arrival is the call time and failure to arrive for call time will result to penalties.
+
+Dress code: plain white top, blue denim jeans and white sneakers.
+
+Grooming: Please ensure that you have light makeup no heavy eyeshadows please ensure that your hair neat straightened or tied neatly.
+
+NB: Taking pictures of consumers with the products is essential
+
+• A minimum of 15 pictures is needed.
+
+• Please always ensure that your phone is fully charged and also bring a power bank or a charger.
+
+How the promotion will work:
+
+Ensure that your work station at all times is clean and presentable. There is a display showing stock and / or giveaways. Engage with each and every consumer in a professional and brand appropriate fashion. Convince consumers that our products are the ultimate brand of choice.`;
+
+      const storedMessages = await AsyncStorage.getItem('@messages');
+      const messages = storedMessages ? JSON.parse(storedMessages) : [];
+      
+      const updatedMessages = messages.map((msg: any) => 
+        msg.eventId === event.id ? { ...msg, message, date: event.date } : msg
+      );
+      
+      await AsyncStorage.setItem('@messages', JSON.stringify(updatedMessages));
+      console.log('Message updated');
+    } catch (error) {
+      console.error('Error updating message:', error);
+    }
+  };
+
+  const deleteMessage = async (eventId: string) => {
+    try {
+      console.log('Deleting message for event:', eventId);
+      
+      const storedMessages = await AsyncStorage.getItem('@messages');
+      const messages = storedMessages ? JSON.parse(storedMessages) : [];
+      
+      const updatedMessages = messages.filter((msg: any) => msg.eventId !== eventId);
+      await AsyncStorage.setItem('@messages', JSON.stringify(updatedMessages));
+      
+      console.log('Message deleted');
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  };
+
   const createPaymentEntries = async (event: EventData) => {
     try {
       console.log('Creating payment entries for event:', event.id);
@@ -227,6 +397,59 @@ Ensure that your work station at all times is clean and presentable. There is a 
       console.log('Payment entries created:', paymentEntries.length);
     } catch (error) {
       console.error('Error creating payment entries:', error);
+    }
+  };
+
+  const updatePaymentEntries = async (event: EventData) => {
+    try {
+      console.log('Updating payment entries for event:', event.id);
+      
+      const storedPayments = await AsyncStorage.getItem('@payments');
+      const payments = storedPayments ? JSON.parse(storedPayments) : [];
+      
+      // Remove old payment entries for this event
+      const filteredPayments = payments.filter((p: any) => p.eventId !== event.id);
+      
+      // Create new payment entries
+      const promoterNames = event.promoters.split('&').map(name => name.trim());
+      const rate = parseFloat(event.rate) || 0;
+      const durationMatch = event.duration.match(/(\d+)\s*hours?/i);
+      const hours = durationMatch ? parseInt(durationMatch[1]) : 0;
+      
+      const newPaymentEntries = promoterNames.map(promoter => ({
+        id: `${event.id}_${promoter.replace(/\s+/g, '_')}`,
+        eventId: event.id,
+        promoters: promoter,
+        event: event.event,
+        date: event.date,
+        hours: hours,
+        rate: rate,
+        totalAmount: hours * rate,
+        paid: false,
+      }));
+
+      const updatedPayments = [...filteredPayments, ...newPaymentEntries];
+      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
+      
+      console.log('Payment entries updated');
+    } catch (error) {
+      console.error('Error updating payment entries:', error);
+    }
+  };
+
+  const deletePaymentEntries = async (eventId: string) => {
+    try {
+      console.log('Deleting payment entries for event:', eventId);
+      
+      const storedPayments = await AsyncStorage.getItem('@payments');
+      const payments = storedPayments ? JSON.parse(storedPayments) : [];
+      
+      const updatedPayments = payments.filter((p: any) => p.eventId !== eventId);
+      await AsyncStorage.setItem('@payments', JSON.stringify(updatedPayments));
+      
+      console.log('Payment entries deleted');
+    } catch (error) {
+      console.error('Error deleting payment entries:', error);
     }
   };
 
@@ -316,16 +539,48 @@ Ensure that your work station at all times is clean and presentable. There is a 
       />
 
       <ScrollView style={styles.eventsContainer}>
-        {selectedDate && events[selectedDate] && (
-          <View style={styles.selectedDateEvents}>
+        {selectedDate && (
+          <View style={styles.selectedDateHeader}>
             <Text style={styles.selectedDateTitle}>
-              Events for {formatDate(selectedDate)}
+              {formatDate(selectedDate)}
             </Text>
+            <RoleGuard allowedRoles={['manager']} showMessage={false}>
+              <TouchableOpacity 
+                style={styles.addEventButton}
+                onPress={openCreateEventModal}
+              >
+                <IconSymbol name="plus" size={20} color={colors.card} />
+                <Text style={styles.addEventButtonText}>Add Event</Text>
+              </TouchableOpacity>
+            </RoleGuard>
+          </View>
+        )}
+
+        {selectedDate && events[selectedDate] && events[selectedDate].length > 0 ? (
+          <View style={styles.selectedDateEvents}>
             {events[selectedDate].map((event, index) => (
               <View key={index} style={styles.eventCard}>
                 <View style={styles.eventHeader}>
-                  <Text style={styles.eventTitle}>{event.event}</Text>
-                  <Text style={styles.eventVenue}>{event.venue}</Text>
+                  <View style={styles.eventTitleContainer}>
+                    <Text style={styles.eventTitle}>{event.event}</Text>
+                    <Text style={styles.eventVenue}>{event.venue}</Text>
+                  </View>
+                  <RoleGuard allowedRoles={['manager']} showMessage={false}>
+                    <View style={styles.eventActions}>
+                      <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => openEditEventModal(event)}
+                      >
+                        <IconSymbol name="pencil" size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => deleteEvent(event)}
+                      >
+                        <IconSymbol name="trash" size={20} color={colors.secondary} />
+                      </TouchableOpacity>
+                    </View>
+                  </RoleGuard>
                 </View>
                 <Text style={styles.eventDetail}>Promoters: {event.promoters}</Text>
                 <Text style={styles.eventDetail}>Time: {event.arrivalTime}</Text>
@@ -335,7 +590,20 @@ Ensure that your work station at all times is clean and presentable. There is a 
               </View>
             ))}
           </View>
-        )}
+        ) : selectedDate ? (
+          <View style={styles.noEventsContainer}>
+            <IconSymbol name="calendar" size={48} color={colors.textSecondary} />
+            <Text style={styles.noEventsText}>No events scheduled for this date</Text>
+            <RoleGuard allowedRoles={['manager']} showMessage={false}>
+              <TouchableOpacity 
+                style={styles.createFirstEventButton}
+                onPress={openCreateEventModal}
+              >
+                <Text style={styles.createFirstEventButtonText}>Create Event</Text>
+              </TouchableOpacity>
+            </RoleGuard>
+          </View>
+        ) : null}
       </ScrollView>
 
       <RoleGuard allowedRoles={['manager']} showMessage={false}>
@@ -349,8 +617,10 @@ Ensure that your work station at all times is clean and presentable. There is a 
               <TouchableOpacity onPress={() => setShowEventModal(false)}>
                 <Text style={styles.cancelButton}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Create Event</Text>
-              <TouchableOpacity onPress={createEvent}>
+              <Text style={styles.modalTitle}>
+                {editingEvent ? 'Edit Event' : 'Create Event'}
+              </Text>
+              <TouchableOpacity onPress={editingEvent ? updateEvent : createEvent}>
                 <Text style={styles.saveButton}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -367,6 +637,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.promoters}
                   onChangeText={(text) => setNewEvent({...newEvent, promoters: text})}
                   placeholder="e.g., Jackie & Noluthando"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -377,6 +648,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.venue}
                   onChangeText={(text) => setNewEvent({...newEvent, venue: text})}
                   placeholder="e.g., King's Park Stadium"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -387,6 +659,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.location}
                   onChangeText={(text) => setNewEvent({...newEvent, location: text})}
                   placeholder="e.g., Jacko Jackson Dr, Stamford Hill, Durban, 4025"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -397,6 +670,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.event}
                   onChangeText={(text) => setNewEvent({...newEvent, event: text})}
                   placeholder="e.g., Springboks vs Argentina"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -407,6 +681,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.arrivalTime}
                   onChangeText={(text) => setNewEvent({...newEvent, arrivalTime: text})}
                   placeholder="e.g., 14:00"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -417,6 +692,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.duration}
                   onChangeText={(text) => setNewEvent({...newEvent, duration: text})}
                   placeholder="e.g., 15:00- 21:00 (6 hours)"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -428,6 +704,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   onChangeText={(text) => setNewEvent({...newEvent, rate: text})}
                   placeholder="e.g., 100"
                   keyboardType="numeric"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -438,6 +715,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   value={newEvent.brands}
                   onChangeText={(text) => setNewEvent({...newEvent, brands: text})}
                   placeholder="e.g., Klipdrift"
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
 
@@ -450,6 +728,7 @@ Ensure that your work station at all times is clean and presentable. There is a 
                   placeholder="e.g., Hosting guests in the Heineken and Klipdrift Suite."
                   multiline
                   numberOfLines={3}
+                  placeholderTextColor={colors.textSecondary}
                 />
               </View>
             </ScrollView>
@@ -502,14 +781,34 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-  selectedDateEvents: {
-    marginBottom: 20,
+  selectedDateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   selectedDateTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 12,
+    flex: 1,
+  },
+  addEventButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addEventButtonText: {
+    color: colors.card,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  selectedDateEvents: {
+    marginBottom: 20,
   },
   eventCard: {
     backgroundColor: colors.card,
@@ -520,7 +819,13 @@ const styles = StyleSheet.create({
     borderColor: colors.textSecondary + '20',
   },
   eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  eventTitleContainer: {
+    flex: 1,
   },
   eventTitle: {
     fontSize: 16,
@@ -532,10 +837,39 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 2,
   },
+  eventActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 8,
+  },
   eventDetail: {
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 4,
+  },
+  noEventsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  noEventsText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  createFirstEventButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  createFirstEventButtonText: {
+    color: colors.card,
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,
