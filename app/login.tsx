@@ -47,16 +47,6 @@ export default function LoginScreen() {
     }
   };
 
-  const fillDemoCredentials = (role: 'manager' | 'supervisor') => {
-    if (role === 'manager') {
-      setEmail('Mtsand09@gmail.com');
-      setPassword('Olive@22!');
-    } else {
-      setEmail('sisandamhlongo28@gmail.com');
-      setPassword('Sands#28!');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
@@ -76,6 +66,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Email"
+                placeholderTextColor={colors.textSecondary}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -90,6 +81,7 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Password"
+                placeholderTextColor={colors.textSecondary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -122,33 +114,20 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.demoSection}>
-            <Text style={styles.demoTitle}>Demo Accounts</Text>
-            <Text style={styles.demoSubtitle}>Click to auto-fill credentials</Text>
-            
-            <TouchableOpacity
-              style={styles.demoButton}
-              onPress={() => fillDemoCredentials('manager')}
-              disabled={isLoading}
-            >
-              <IconSymbol name="crown" size={20} color={colors.primary} />
-              <View style={styles.demoButtonContent}>
-                <Text style={styles.demoButtonTitle}>Manager Account</Text>
-                <Text style={styles.demoButtonSubtitle}>Full access - View & Edit</Text>
+          <View style={styles.infoSection}>
+            <Text style={styles.infoTitle}>Login Credentials</Text>
+            <View style={styles.infoBox}>
+              <View style={styles.accountInfo}>
+                <Text style={styles.accountLabel}>Manager Account:</Text>
+                <Text style={styles.accountEmail}>Mtsand09@gmail.com</Text>
+                <Text style={styles.accountPassword}>Password: Olive@22!</Text>
               </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.demoButton}
-              onPress={() => fillDemoCredentials('supervisor')}
-              disabled={isLoading}
-            >
-              <IconSymbol name="eye" size={20} color={colors.accent} />
-              <View style={styles.demoButtonContent}>
-                <Text style={styles.demoButtonTitle}>Supervisor Account</Text>
-                <Text style={styles.demoButtonSubtitle}>View-only access</Text>
+              <View style={styles.accountInfo}>
+                <Text style={styles.accountLabel}>Supervisor Account:</Text>
+                <Text style={styles.accountEmail}>sisandamhlongo28@gmail.com</Text>
+                <Text style={styles.accountPassword}>Password: Sands#28!</Text>
               </View>
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -224,43 +203,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  demoSection: {
+  infoSection: {
     alignItems: 'center',
   },
-  demoTitle: {
+  infoTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  demoSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 20,
-  },
-  demoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  infoBox: {
     backgroundColor: colors.card,
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 20,
     width: '100%',
     borderWidth: 1,
     borderColor: colors.textSecondary + '20',
   },
-  demoButtonContent: {
-    flex: 1,
-    marginLeft: 12,
+  accountInfo: {
+    marginBottom: 20,
   },
-  demoButtonTitle: {
+  accountLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 8,
   },
-  demoButtonSubtitle: {
+  accountEmail: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginBottom: 4,
+  },
+  accountPassword: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });
