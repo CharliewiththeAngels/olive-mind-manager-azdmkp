@@ -30,11 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    console.log('Initializing auth...');
+    console.log('🔐 Initializing auth...');
     
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Initial session:', session ? 'Found' : 'None');
+      console.log('📱 Initial session:', session ? `Found (${session.user.email})` : 'None');
       setSession(session);
       if (session?.user) {
         loadUserProfile(session.user);
@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event, session ? 'Session exists' : 'No session');
+      console.log('🔄 Auth state changed:', _event, session ? `Session exists (${session.user.email})` : 'No session');
       setSession(session);
       if (session?.user) {
         loadUserProfile(session.user);
@@ -62,7 +62,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
-      console.log('Loading user profile for:', supabaseUser.email);
+      console.log('👤 Loading user profile for:', supabaseUser.email);
+      console.log('📧 Email confirmed:', supabaseUser.email_confirmed_at ? 'Yes' : 'No');
       
       // Fetch user profile from users table
       const { data, error } = await supabase
@@ -72,17 +73,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (error) {
-        console.error('Error loading user profile:', error);
+        console.error('⚠️ Error loading user profile from users table:', error.message);
+        
         // If user doesn't exist in users table, create a default profile
+        console.log('📝 Creating default user profile...');
         const newUser: User = {
           id: supabaseUser.id,
           email: supabaseUser.email || '',
           role: 'supervisor', // Default role
           name: supabaseUser.email?.split('@')[0] || 'User',
         };
+        
+        // Try to insert into users table
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: supabaseUser.id,
+            email: supabaseUser.email,
+            name: newUser.name,
+            role: newUser.role,
+          });
+        
+        if (insertError) {
+          console.error('❌ Error creating user profile:', insertError.message);
+        } else {
+          console.log('✅ User profile created successfully');
+        }
+        
         setUser(newUser);
       } else if (data) {
-        console.log('User profile loaded:', data.email, data.role);
+        console.log('✅ User profile loaded:', data.email, `(${data.role})`);
         setUser({
           id: data.id,
           email: data.email,
@@ -90,8 +110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: data.name,
         });
       }
-    } catch (error) {
-      console.error('Error in loadUserProfile:', error);
+    } catch (error: any) {
+      console.error('❌ Exception in loadUserProfile:', error.message);
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      console.log('Attempting login for:', email);
+      console.log('🔑 Attempting login...');
+      console.log('📧 Email:', email);
+      console.log('🔒 Password length:', password.length);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -107,43 +129,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.error('Login error:', error.message, error.status);
+        console.error('❌ Login error:', error.message);
+        console.error('📊 Error status:', error.status);
+        console.error('📋 Error name:', error.name);
         
-        // Log more details for debugging
+        // Provide specific error messages
         if (error.message.includes('Invalid login credentials')) {
-          console.error('Invalid credentials - check if user exists and password is correct');
+          console.error('💡 Possible causes:');
+          console.error('   - User does not exist in Supabase Auth');
+          console.error('   - Password is incorrect');
+          console.error('   - Email is incorrect');
         } else if (error.message.includes('Email not confirmed')) {
-          console.error('Email not confirmed - user needs to verify email');
+          console.error('💡 User needs to verify their email address');
+        } else if (error.message.includes('Email link is invalid or has expired')) {
+          console.error('💡 Verification link has expired');
         }
         
         return false;
       }
 
       if (data.user) {
-        console.log('Login successful for:', email);
-        console.log('User ID:', data.user.id);
-        console.log('Email confirmed:', data.user.email_confirmed_at);
+        console.log('✅ Login successful!');
+        console.log('👤 User ID:', data.user.id);
+        console.log('📧 Email:', data.user.email);
+        console.log('✉️ Email confirmed:', data.user.email_confirmed_at ? 'Yes' : 'No');
+        console.log('🕐 Last sign in:', data.user.last_sign_in_at);
         return true;
       }
 
+      console.error('❌ Login failed: No user data returned');
       return false;
-    } catch (error) {
-      console.error('Login exception:', error);
+    } catch (error: any) {
+      console.error('❌ Login exception:', error.message || error);
       return false;
     }
   };
 
   const logout = async () => {
     try {
-      console.log('Logging out user:', user?.email);
+      console.log('🚪 Logging out user:', user?.email);
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.error('Logout error:', error);
+        console.error('❌ Logout error:', error.message);
+      } else {
+        console.log('✅ Logout successful');
       }
       setUser(null);
       setSession(null);
-    } catch (error) {
-      console.error('Logout exception:', error);
+    } catch (error: any) {
+      console.error('❌ Logout exception:', error.message);
     }
   };
 
