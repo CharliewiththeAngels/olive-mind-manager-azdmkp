@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         loadUserProfile(session.user);
       } else {
+        console.log('🚪 No session - clearing user state');
         setUser(null);
         setIsLoading(false);
       }
@@ -180,16 +181,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       console.log('🚪 Logging out user:', user?.email);
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('❌ Logout error:', error.message);
-      } else {
-        console.log('✅ Logout successful');
-      }
+      
+      // Clear local state first
       setUser(null);
       setSession(null);
+      
+      // Then sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('❌ Logout error:', error.message);
+        throw error;
+      } else {
+        console.log('✅ Logout successful - user signed out from Supabase');
+      }
     } catch (error: any) {
       console.error('❌ Logout exception:', error.message);
+      // Even if there's an error, we've already cleared local state
+      // so the user will be logged out from the app's perspective
     }
   };
 

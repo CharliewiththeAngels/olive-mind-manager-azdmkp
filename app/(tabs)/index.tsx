@@ -29,8 +29,16 @@ export default function IndexScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await logout();
-            router.replace('/login');
+            console.log('🚪 User confirmed logout');
+            try {
+              await logout();
+              console.log('✅ Logout completed, navigating to login screen');
+              // Use replace to prevent going back to authenticated screens
+              router.replace('/login');
+            } catch (error: any) {
+              console.error('❌ Error during logout:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
           },
         },
       ]
