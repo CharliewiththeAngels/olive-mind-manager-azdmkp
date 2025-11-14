@@ -13,7 +13,7 @@ import {
   FlatList,
   TextInput,
 } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import RoleGuard from '@/components/RoleGuard';
 import { colors } from '@/styles/commonStyles';
@@ -80,14 +80,7 @@ export default function PaymentsScreen() {
           style: 'destructive',
           onPress: async () => {
             console.log('🚪 User confirmed logout from Payments');
-            try {
-              await logout();
-              console.log('✅ Logout completed, navigating to login screen');
-              router.replace('/login');
-            } catch (error: any) {
-              console.error('❌ Error during logout:', error);
-              Alert.alert('Error', 'Failed to logout. Please try again.');
-            }
+            await logout();
           },
         },
       ]

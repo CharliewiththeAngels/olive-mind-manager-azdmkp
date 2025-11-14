@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { router } from 'expo-router';
 
 export type UserRole = 'manager' | 'supervisor';
 
@@ -180,25 +181,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      console.log('🚪 Logging out user:', user?.email);
+      console.log('🚪 Starting logout process for user:', user?.email);
       
-      // Clear local state first
-      setUser(null);
-      setSession(null);
-      
-      // Then sign out from Supabase
+      // Sign out from Supabase first
       const { error } = await supabase.auth.signOut();
       
       if (error) {
-        console.error('❌ Logout error:', error.message);
-        throw error;
+        console.error('❌ Logout error from Supabase:', error.message);
+        // Don't throw - we still want to clear local state
       } else {
-        console.log('✅ Logout successful - user signed out from Supabase');
+        console.log('✅ Successfully signed out from Supabase');
       }
+      
+      // Clear local state
+      console.log('🧹 Clearing local auth state...');
+      setUser(null);
+      setSession(null);
+      
+      // Navigate to login screen
+      console.log('🔄 Navigating to login screen...');
+      router.replace('/login');
+      
+      console.log('✅ Logout process completed');
     } catch (error: any) {
       console.error('❌ Logout exception:', error.message);
-      // Even if there's an error, we've already cleared local state
-      // so the user will be logged out from the app's perspective
+      // Even if there's an error, clear local state and navigate
+      setUser(null);
+      setSession(null);
+      router.replace('/login');
     }
   };
 

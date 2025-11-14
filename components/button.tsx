@@ -150,10 +150,15 @@ export const LogoutButton: React.FC = () => {
           style: "destructive",
           onPress: async () => {
             try {
-              await logout();           // clear Supabase session
-              router.replace("/login");  // go back to login screen
+              console.log("LogoutButton: signing out…");
+              await logout(); // clears auth/session in AuthContext
+              router.replace("/login");
             } catch (error) {
               console.error("Logout error:", error);
+              Alert.alert(
+                "Error",
+                "Something went wrong while logging out. Please try again."
+              );
             }
           },
         },
@@ -185,10 +190,10 @@ const logoutStyles = StyleSheet.create({
     zIndex: 100,
   },
   button: {
-    borderColor: "#ef4444", // red border
+    borderColor: "#ef4444",
   },
   text: {
-    color: "#ef4444", // red text
+    color: "#ef4444",
   },
 });
 
