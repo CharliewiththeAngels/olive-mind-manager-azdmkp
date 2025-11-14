@@ -32,16 +32,20 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     try {
+      console.log('Attempting login for:', email.trim());
       const success = await login(email.trim(), password);
       if (success) {
         console.log('Login successful, navigating to tabs');
         router.replace('/(tabs)');
       } else {
-        Alert.alert('Login Failed', 'Invalid email or password');
+        Alert.alert(
+          'Login Failed', 
+          'Invalid email or password.\n\nPlease check:\n• Email is correct\n• Password is correct\n• Account exists and email is verified\n\nIf you need to reset your password, please contact support.'
+        );
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Error', 'An error occurred during login');
+      Alert.alert('Error', 'An error occurred during login. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -112,6 +116,15 @@ export default function LoginScreen() {
                 <Text style={styles.loginButtonText}>Sign In</Text>
               )}
             </TouchableOpacity>
+
+            <View style={styles.helpContainer}>
+              <Text style={styles.helpText}>
+                Having trouble logging in?
+              </Text>
+              <Text style={styles.helpSubtext}>
+                Make sure your email is verified and password is correct.
+              </Text>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -186,5 +199,20 @@ const styles = StyleSheet.create({
     color: colors.card,
     fontSize: 16,
     fontWeight: '600',
+  },
+  helpContainer: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  helpText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  helpSubtext: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

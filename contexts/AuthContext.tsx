@@ -107,12 +107,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.error('Login error:', error.message);
+        console.error('Login error:', error.message, error.status);
+        
+        // Log more details for debugging
+        if (error.message.includes('Invalid login credentials')) {
+          console.error('Invalid credentials - check if user exists and password is correct');
+        } else if (error.message.includes('Email not confirmed')) {
+          console.error('Email not confirmed - user needs to verify email');
+        }
+        
         return false;
       }
 
       if (data.user) {
         console.log('Login successful for:', email);
+        console.log('User ID:', data.user.id);
+        console.log('Email confirmed:', data.user.email_confirmed_at);
         return true;
       }
 
