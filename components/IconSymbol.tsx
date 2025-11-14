@@ -1,3 +1,4 @@
+
 // This file is a fallback for using MaterialIcons on Android and web.
 
 import React from "react";
@@ -132,6 +133,8 @@ const MAPPING = {
   "clock.fill": "access-time",
   "clock": "access-time",
   "calendar": "event",
+  "calendar.badge.clock": "schedule",
+  "schedule": "schedule",
   "timer": "timer",
 
   // User & Profile
@@ -161,6 +164,10 @@ const MAPPING = {
   "lightbulb.fill": "lightbulb",
   "moon.fill": "dark-mode",
   "sun.max.fill": "light-mode",
+
+  // Additional mappings for tabs
+  "mail": "mail",
+  "payments": "payment",
 } as Partial<
   Record<
     import("expo-symbols").SymbolViewProps["name"],

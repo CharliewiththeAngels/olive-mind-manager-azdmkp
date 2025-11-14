@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   View,
@@ -38,7 +39,7 @@ interface FloatingTabBarProps {
 
 export default function FloatingTabBar({
   tabs,
-  containerWidth = 300,
+  containerWidth = screenWidth - 40,
   borderRadius = 25,
   bottomMargin
 }: FloatingTabBarProps) {
@@ -47,8 +48,12 @@ export default function FloatingTabBar({
   const theme = useTheme();
   const animatedValue = useSharedValue(0);
 
+  console.log('FloatingTabBar rendering - pathname:', pathname);
+
   // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
+    console.log('Calculating active tab for pathname:', pathname);
+    
     // Find the best matching tab based on the current pathname
     let bestMatch = -1;
     let bestMatchScore = 0;
@@ -73,6 +78,8 @@ export default function FloatingTabBar({
         score = 40;
       }
 
+      console.log(`Tab ${tab.name} score: ${score}`);
+
       if (score > bestMatchScore) {
         bestMatchScore = score;
         bestMatch = index;
@@ -80,7 +87,9 @@ export default function FloatingTabBar({
     });
 
     // Default to first tab if no match found
-    return bestMatch >= 0 ? bestMatch : 0;
+    const finalIndex = bestMatch >= 0 ? bestMatch : 0;
+    console.log('Active tab index:', finalIndex, 'tab:', tabs[finalIndex]?.name);
+    return finalIndex;
   }, [pathname, tabs]);
 
   React.useEffect(() => {
@@ -93,14 +102,17 @@ export default function FloatingTabBar({
     }
   }, [activeTabIndex, animatedValue]);
 
-  const handleTabPress = (route: string) => {
-    router.push(route);
+  const handleTabPress = (route: string, tabName: string) => {
+    console.log('Tab pressed:', tabName, 'route:', route);
+    try {
+      router.push(route);
+    } catch (error) {
+      console.error('Error navigating to route:', route, error);
+    }
   };
 
-  // Remove unnecessary tabBarStyle animation to prevent flickering
-
   const indicatorStyle = useAnimatedStyle(() => {
-    const tabWidth = (containerWidth - 16) / tabs.length; // Account for container padding (8px on each side)
+    const tabWidth = (containerWidth - 16) / tabs.length;
     return {
       transform: [
         {
@@ -150,9 +162,9 @@ export default function FloatingTabBar({
     indicator: {
       ...styles.indicator,
       backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.08)' // Subtle white overlay in dark mode
-        : 'rgba(0, 0, 0, 0.04)', // Subtle black overlay in light mode
-      width: `${(100 / tabs.length) - 3}%`, // Dynamic width based on number of tabs
+        ? 'rgba(255, 255, 255, 0.08)'
+        : 'rgba(0, 0, 0, 0.04)',
+      width: (containerWidth - 16) / tabs.length,
     },
   };
 
@@ -179,7 +191,7 @@ export default function FloatingTabBar({
                 <TouchableOpacity
                   key={tab.name}
                   style={styles.tab}
-                  onPress={() => handleTabPress(tab.route)}
+                  onPress={() => handleTabPress(tab.route, tab.name)}
                   activeOpacity={0.7}
                 >
                   <View style={styles.tabContent}>
@@ -215,20 +227,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
-    alignItems: 'center', // Center the content
+    alignItems: 'center',
+    pointerEvents: 'box-none',
   },
   container: {
     marginHorizontal: 20,
     alignSelf: 'center',
-    // width and marginBottom handled dynamically via props
+    pointerEvents: 'box-none',
   },
   blurContainer: {
     overflow: 'hidden',
-    // borderRadius and other styling applied dynamically
+    pointerEvents: 'auto',
   },
   background: {
     ...StyleSheet.absoluteFillObject,
-    // Dynamic styling applied in component
   },
   indicator: {
     position: 'absolute',
@@ -236,8 +248,6 @@ const styles = StyleSheet.create({
     left: 8,
     bottom: 8,
     borderRadius: 17,
-    width: `${(100 / 2) - 3}%`, // Default for 2 tabs, will be overridden by dynamic styles
-    // Dynamic styling applied in component
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -260,6 +270,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     marginTop: 2,
-    // Dynamic styling applied in component
   },
 });
