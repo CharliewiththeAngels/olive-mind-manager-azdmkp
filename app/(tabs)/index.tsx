@@ -62,7 +62,8 @@ export default function IndexScreen() {
         </View>
         
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <IconSymbol name="arrow-right-from-bracket" size={20} color={colors.secondary} />
+          <IconSymbol name="logout" size={24} color="#FF3B30" />
+          <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
 
@@ -151,8 +152,6 @@ export default function IndexScreen() {
             </View>
             <IconSymbol name="chevron-right" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
-
-
         </View>
       </View>
     </SafeAreaView>
@@ -199,7 +198,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   logoutButton: {
-    padding: 8,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF3B30' + '15',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF3B30' + '30',
+  },
+  logoutText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF3B30',
+    marginTop: 4,
   },
   content: {
     flex: 1,
