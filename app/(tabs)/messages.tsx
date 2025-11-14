@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import React, { useState, useEffect } from 'react';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as Clipboard from 'expo-clipboard';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import RoleGuard from '@/components/RoleGuard';
 import { colors } from '@/styles/commonStyles';
@@ -35,7 +35,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 };
 
 export default function MessagesScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [messages, setMessages] = useState<MessageData[]>([]);
 
   useEffect(() => {
@@ -54,6 +54,34 @@ export default function MessagesScreen() {
       subscription.unsubscribe();
     };
   }, []);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('🚪 User confirmed logout from Messages');
+            try {
+              await logout();
+              console.log('✅ Logout completed, navigating to login screen');
+              router.replace('/login');
+            } catch (error: any) {
+              console.error('❌ Error during logout:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const loadMessages = async () => {
     try {
@@ -184,6 +212,17 @@ export default function MessagesScreen() {
       
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <IconSymbol
+            ios_icon_name="rectangle.portrait.and.arrow.right"
+            android_material_icon_name="logout"
+            size={20}
+            color="#FF3B30"
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content}>
@@ -296,6 +335,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  logoutButton: {
+    backgroundColor: hexToRgba('#FF3B30', 0.1),
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: hexToRgba('#FF3B30', 0.3),
   },
   content: {
     flex: 1,
