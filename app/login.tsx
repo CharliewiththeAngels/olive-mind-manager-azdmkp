@@ -37,10 +37,12 @@ export default function LoginScreen() {
     
     try {
       console.log('=== LOGIN ATTEMPT ===');
-      console.log('Email:', email.trim());
+      console.log('Email (original):', email.trim());
+      console.log('Email (lowercase):', email.trim().toLowerCase());
       console.log('Password length:', password.length);
       
-      const success = await login(email.trim(), password);
+      // Convert email to lowercase for case-insensitive login
+      const success = await login(email.trim().toLowerCase(), password);
       
       if (success) {
         console.log('✅ Login successful, navigating to tabs');
@@ -50,7 +52,7 @@ export default function LoginScreen() {
         setErrorMessage(
           'Login failed. Please check:\n\n' +
           '• Email address is correct\n' +
-          '• Password is correct\n' +
+          '• Password is correct (case-sensitive)\n' +
           '• Account exists in Supabase Auth\n' +
           '• Email has been verified\n\n' +
           'If accounts are not set up, use the Setup button below.'
@@ -160,38 +162,24 @@ export default function LoginScreen() {
             <View style={styles.setupInstructions}>
               <View style={styles.instructionHeader}>
                 <IconSymbol name="info-circle" size={24} color={colors.primary} />
-                <Text style={styles.instructionTitle}>First Time Setup</Text>
+                <Text style={styles.instructionTitle}>Account Information</Text>
               </View>
               
               <Text style={styles.instructionText}>
-                If this is your first time using the app, you need to create user accounts in Supabase Auth.
+                Use the credentials below to login. If login fails, click "Setup Accounts" to create or fix the accounts.
               </Text>
 
-              <View style={styles.stepContainer}>
-                <Text style={styles.stepNumber}>1.</Text>
-                <Text style={styles.stepText}>
-                  Click the "Setup Accounts" button above to automatically create accounts
-                </Text>
-              </View>
-
-              <View style={styles.stepContainer}>
-                <Text style={styles.stepNumber}>2.</Text>
-                <Text style={styles.stepText}>
-                  Or manually create accounts in your Supabase Dashboard under Authentication → Users
-                </Text>
-              </View>
-
               <View style={styles.accountsBox}>
-                <Text style={styles.accountsTitle}>Required Accounts:</Text>
+                <Text style={styles.accountsTitle}>Login Credentials:</Text>
                 
                 <View style={styles.accountItem}>
-                  <Text style={styles.accountLabel}>Manager:</Text>
-                  <Text style={styles.accountEmail}>Mtsand09@gmail.com</Text>
+                  <Text style={styles.accountLabel}>Manager Account:</Text>
+                  <Text style={styles.accountEmail}>mtsand09@gmail.com</Text>
                   <Text style={styles.accountPassword}>Password: Olive@22!</Text>
                 </View>
 
                 <View style={styles.accountItem}>
-                  <Text style={styles.accountLabel}>Supervisor:</Text>
+                  <Text style={styles.accountLabel}>Supervisor Account:</Text>
                   <Text style={styles.accountEmail}>sisandamhlongo28@gmail.com</Text>
                   <Text style={styles.accountPassword}>Password: Sands#28!</Text>
                 </View>
@@ -200,7 +188,7 @@ export default function LoginScreen() {
               <View style={styles.noteBox}>
                 <IconSymbol name="exclamation-triangle" size={16} color="#ff9800" />
                 <Text style={styles.noteText}>
-                  Important: Passwords are case-sensitive. Make sure to enter them exactly as shown.
+                  Important: Passwords are case-sensitive. Emails are NOT case-sensitive.
                 </Text>
               </View>
             </View>

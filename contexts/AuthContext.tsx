@@ -64,12 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('👤 Loading user profile for:', supabaseUser.email);
       console.log('📧 Email confirmed:', supabaseUser.email_confirmed_at ? 'Yes' : 'No');
+      console.log('🆔 User ID:', supabaseUser.id);
       
-      // Fetch user profile from users table
+      // Fetch user profile from users table using the auth user ID
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('email', supabaseUser.email)
+        .eq('id', supabaseUser.id)
         .single();
 
       if (error) {
@@ -123,8 +124,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('📧 Email:', email);
       console.log('🔒 Password length:', password.length);
       
+      // Supabase auth is case-insensitive for emails, but we'll ensure lowercase
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log('📧 Normalized email:', normalizedEmail);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -139,10 +144,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('   - User does not exist in Supabase Auth');
           console.error('   - Password is incorrect');
           console.error('   - Email is incorrect');
+          console.error('');
+          console.error('💡 Solutions:');
+          console.error('   1. Use the "Setup Accounts" button to create/fix accounts');
+          console.error('   2. Check that the password is exactly: Olive@22! (for manager) or Sands#28! (for supervisor)');
+          console.error('   3. Make sure email verification is complete');
         } else if (error.message.includes('Email not confirmed')) {
           console.error('💡 User needs to verify their email address');
+          console.error('   Check the email inbox for verification link');
         } else if (error.message.includes('Email link is invalid or has expired')) {
           console.error('💡 Verification link has expired');
+          console.error('   Request a new verification email');
         }
         
         return false;
