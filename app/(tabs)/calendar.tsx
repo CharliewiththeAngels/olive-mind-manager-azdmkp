@@ -76,7 +76,7 @@ export default function CalendarScreen() {
     };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',

@@ -7,8 +7,12 @@ import {
   TextStyle,
   useColorScheme,
   ViewStyle,
+  Alert,
+  View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { appleBlue, zincColors } from "@/constants/Colors";
+import { useAuth } from "@/contexts/AuthContext";
 
 type ButtonVariant = "filled" | "outline" | "ghost";
 type ButtonSize = "sm" | "md" | "lg";
@@ -24,6 +28,9 @@ interface ButtonProps {
   textStyle?: TextStyle;
 }
 
+// =========================
+// Main reusable Button
+// =========================
 export const Button: React.FC<ButtonProps> = ({
   onPress,
   variant = "filled",
@@ -124,5 +131,65 @@ export const Button: React.FC<ButtonProps> = ({
     </Pressable>
   );
 };
+
+// =========================
+// Floating Logout Button
+// =========================
+export const LogoutButton: React.FC = () => {
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Sign out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await logout();           // clear Supabase session
+              router.replace("/login");  // go back to login screen
+            } catch (error) {
+              console.error("Logout error:", error);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  return (
+    <View style={logoutStyles.container}>
+      <Button
+        variant="outline"
+        size="sm"
+        onPress={handleLogout}
+        style={logoutStyles.button}
+        textStyle={logoutStyles.text}
+      >
+        Logout
+      </Button>
+    </View>
+  );
+};
+
+const logoutStyles = StyleSheet.create({
+  container: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 100,
+  },
+  button: {
+    borderColor: "#ef4444", // red border
+  },
+  text: {
+    color: "#ef4444", // red text
+  },
+});
 
 export default Button;
